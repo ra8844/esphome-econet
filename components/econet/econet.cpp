@@ -27,6 +27,12 @@ static const uint8_t ACK = 6;
 static const uint8_t READ_COMMAND = 30;   // 0x1E
 static const uint8_t WRITE_COMMAND = 31;  // 0x1F
 
+// Some datapoints are effectively "write-only" commands and may never be returned
+// by normal read polling. Pre-register them to avoid "Setting unknown datapoint" warnings.
+static inline bool is_write_only_datapoint_(const std::string &name) {
+  return name == "ALHISCLR" || name == "ALRESET" || name == "RESETDEV";
+}
+
 // Converts 4 bytes (FLOAT_SIZE) to float
 float bytes_to_float(const uint8_t *b) {
   uint8_t byte_array[] = {b[3], b[2], b[1], b[0]};
@@ -579,10 +585,20 @@ void Econet::set_datapoint_(const EconetDatapointID &datapoint_id, const EconetD
     specific.address = dst_adr_;
   }
   auto any = EconetDatapointID{.name = datapoint_id.name, .address = 0};
+
   bool send_specific = true;
   bool send_any = true;
+
+  // If this is a write-only command datapoint, it may never be seen in reads, so
+  // pre-register it to avoid warnings and to allow type validation on subsequent writes.
+  const bool write_only = is_write_only_datapoint_(datapoint_id.name);
+
   if (datapoints_.count(specific) == 0) {
-    ESP_LOGW(TAG, "Setting unknown datapoint %s", datapoint_id.name.c_str());
+    if (write_only) {
+      datapoints_[specific] = value;
+    } else {
+      ESP_LOGW(TAG, "Setting unknown datapoint %s", datapoint_id.name.c_str());
+    }
   } else {
     EconetDatapoint old_value = datapoints_[specific];
     if (old_value.type != value.type) {
@@ -593,8 +609,13 @@ void Econet::set_datapoint_(const EconetDatapointID &datapoint_id, const EconetD
       send_specific = false;
     }
   }
+
   if (datapoints_.count(any) == 0) {
-    ESP_LOGW(TAG, "Setting unknown datapoint %s", datapoint_id.name.c_str());
+    if (write_only) {
+      datapoints_[any] = value;
+    } else {
+      ESP_LOGW(TAG, "Setting unknown datapoint %s", datapoint_id.name.c_str());
+    }
   } else {
     EconetDatapoint old_value = datapoints_[any];
     if (old_value == value) {
@@ -602,6 +623,7 @@ void Econet::set_datapoint_(const EconetDatapointID &datapoint_id, const EconetD
       send_any = false;
     }
   }
+
   if (send_specific) {
     pending_writes_[specific] = value;
     send_datapoint_(specific, value);

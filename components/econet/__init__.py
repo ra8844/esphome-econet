@@ -100,16 +100,10 @@ CONFIG_SCHEMA = (
                 extra_validators=assign_declare_id,
             ),
             cv.Optional(CONF_FLOW_CONTROL_PIN): pins.gpio_output_pin_schema,
-            cv.Optional(
-                CONF_REQUEST_MOD_UPDATE_INTERVALS
-            ): validate_request_mod_update_intervals,
+            cv.Optional(CONF_REQUEST_MOD_UPDATE_INTERVALS): validate_request_mod_update_intervals,
             cv.Optional(CONF_REQUEST_MOD_ADDRESSES): validate_request_mod_addresses,
-            cv.Optional(
-                CONF_MCU_CONNECTED_TIMEOUT, default="120s"
-            ): cv.positive_time_period_milliseconds,
-            cv.Optional(
-                CONF_MCU_CONNECTED_BINARY_SENSOR
-            ): esphome_binary_sensor.binary_sensor_schema(
+            cv.Optional(CONF_MCU_CONNECTED_TIMEOUT, default="120s"): cv.positive_time_period_milliseconds,
+            cv.Optional(CONF_MCU_CONNECTED_BINARY_SENSOR): esphome_binary_sensor.binary_sensor_schema(
                 esphome_binary_sensor.BinarySensor,
                 device_class=DEVICE_CLASS_CONNECTIVITY,
                 entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
@@ -134,18 +128,23 @@ ECONET_CLIENT_SCHEMA = cv.Schema(
 async def to_code(config):
     cg.add_define("USE_API_HOMEASSISTANT_SERVICES")
     var = cg.new_Pvariable(config[CONF_ID])
+
     await cg.register_component(var, config)
     await uart.register_uart_device(var, config)
+
     cg.add(var.set_src_address(config[CONF_SRC_ADDRESS]))
     cg.add(var.set_dst_address(config[CONF_DST_ADDRESS]))
+
+    # IMPORTANT: convert TimePeriod -> uint32 milliseconds for C++
     if CONF_REQUEST_MOD_UPDATE_INTERVALS in config:
         request_mod_update_intervals = config[CONF_REQUEST_MOD_UPDATE_INTERVALS]
         cg.add(
             var.set_request_mod_update_intervals(
                 list(request_mod_update_intervals.keys()),
-                list(request_mod_update_intervals.values()),
+                [v.total_milliseconds for v in request_mod_update_intervals.values()],
             )
         )
+
     if CONF_REQUEST_MOD_ADDRESSES in config:
         request_mod_addresses = config[CONF_REQUEST_MOD_ADDRESSES]
         cg.add(
@@ -154,16 +153,20 @@ async def to_code(config):
                 list(request_mod_addresses.values()),
             )
         )
+
     if CONF_FLOW_CONTROL_PIN in config:
         pin = await gpio_pin_expression(config[CONF_FLOW_CONTROL_PIN])
         cg.add(var.set_flow_control_pin(pin))
+
     if CONF_MCU_CONNECTED_TIMEOUT in config:
-        cg.add(var.set_mcu_connected_timeout(config[CONF_MCU_CONNECTED_TIMEOUT]))
+        cg.add(var.set_mcu_connected_timeout(config[CONF_MCU_CONNECTED_TIMEOUT].total_milliseconds))
+
     if CONF_MCU_CONNECTED_BINARY_SENSOR in config:
         sens = await esphome_binary_sensor.new_binary_sensor(
             config[CONF_MCU_CONNECTED_BINARY_SENSOR]
         )
         cg.add(var.set_mcu_connected_binary_sensor(sens))
+
     for conf in config.get(CONF_ON_DATAPOINT_UPDATE, []):
         trigger = cg.new_Pvariable(
             conf[CONF_TRIGGER_ID],
