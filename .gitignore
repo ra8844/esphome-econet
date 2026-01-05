@@ -135,3 +135,4 @@ sdkconfig.*
 
 # ESPHome-Econet Ignores
 build-yaml/.gitignore
+econet_base copy.yaml
