@@ -1,155 +1,102 @@
 ---
 substitutions:
-  name: "econet"
-  friendly_name: "Econet Device"
-  device_description: "Rheem Device"
-  tx_pin: GPIO19
-  rx_pin: GPIO22
-  platform: esp32
-  board: esp32dev
-  variant: esp32
-  framework: arduino
-  github_ref: main
-  external_components_source: github://esphome-econet/esphome-econet@${github_ref}
-  logger_level: WARN
-  econet_update_interval: 30s
+  # Safe defaults (device yaml can override)
+  econet_update_interval: 10s
   econet_alarm_update_interval: 30s
   econet_alarm_history_update_interval: 60s
-  mcu_connected_timeout: ${econet_update_interval}
+  econet_config_update_interval: 300s
+  mcu_connected_timeout: 30s
+
+  # Econet module address (your “src” address)
   wifi_module_address: "0x340"
-esphome:
-  name: ${name}
-  friendly_name: ${friendly_name}
-  comment: ${device_description}
-  min_version: "2025.11.0"
-  project:
-    name: "esphome-econet.esphome-econet"
-    version: v3.2.0
-preferences:
-  flash_write_interval: "24h"
-wifi:
-  ap:
-captive_portal:
-api:
-  services:
-    - service: read
-      variables:
-        datapoint_id: string
-      then:
-        - lambda: id(econet_id).homeassistant_read(datapoint_id);
-    - service: read_from_address
-      variables:
-        datapoint_id: string
-        address: int
-      then:
-        - lambda: id(econet_id).homeassistant_read(datapoint_id, address);
-    - service: write_enum
-      variables:
-        datapoint_id: string
-        value: int
-      then:
-        - lambda: id(econet_id).homeassistant_write(datapoint_id, (uint8_t) value);
-    - service: write_enum_from_address
-      variables:
-        datapoint_id: string
-        value: int
-        address: int
-      then:
-        - lambda: id(econet_id).homeassistant_write(datapoint_id, (uint8_t) value, address);
-    - service: write_float
-      variables:
-        datapoint_id: string
-        value: float
-      then:
-        - lambda: id(econet_id).homeassistant_write(datapoint_id, value);
-    - service: write_float_from_address
-      variables:
-        datapoint_id: string
-        value: float
-        address: int
-      then:
-        - lambda: id(econet_id).homeassistant_write(datapoint_id, value, address);
-ota:
-  platform: esphome
-logger:
-  level: ${logger_level}
-  tx_buffer_size: 1024
-external_components:
-  - source: ${external_components_source}
-uart:
-  id: econet_uart
-  baud_rate: 38400
-  rx_buffer_size: 1500
-  tx_pin: ${tx_pin}
-  rx_pin: ${rx_pin}
+
+  # Optional default destination (device/package can override)
+  econet_dst_address: "0x0000"
+
+# IMPORTANT:
+# - NO external_components here (device yaml owns it)
+# - NO uart here (device yaml owns it)
+# - NO wifi/logger/ota/web_server here (device yaml owns them)
+
 econet:
   id: econet_id
   uart_id: econet_uart
   update_interval: ${econet_update_interval}
-  request_mod_update_intervals:
-    1: ${econet_alarm_update_interval}
-    2: ${econet_alarm_history_update_interval}
-    3: ${econet_alarm_history_update_interval}
+
   src_address: ${wifi_module_address}
+  # leave 0x0000 unless you set it in the TLWH package or device yaml
+  dst_address: ${econet_dst_address}
+
   mcu_connected_timeout: ${mcu_connected_timeout}
+  request_mod_update_intervals:
+    1: ${econet_update_interval}
+    2: ${econet_alarm_update_interval}
+    3: ${econet_alarm_history_update_interval}
+    4: ${econet_config_update_interval}
+
+
   mcu_connected_binary_sensor:
     name: "Microcontroller Connected"
+
 sensor:
   - platform: econet
     name: "Active Alerts"
     id: alarm_count
     sensor_datapoint: ALRMALRT
-    request_mod: 1
+    request_mod: 2
     accuracy_decimals: 0
     icon: "mdi:alert"
-    state_class: "measurement"
-  - platform: wifi_signal
-    name: "WiFi Signal Strength"
-    id: wifi_signal_sensor
-    entity_category: "diagnostic"
+    state_class: measurement
+
 text_sensor:
   - platform: econet
     name: "Alarm 1"
     id: alarm_1
     sensor_datapoint: ALARM_01
-    request_mod: 1
+    request_mod: 2
     icon: "mdi:alert"
-    entity_category: "diagnostic"
+    entity_category: diagnostic
+
   - platform: econet
     name: "Alarm 2"
     id: alarm_2
     sensor_datapoint: ALARM_02
-    request_mod: 1
+    request_mod: 2
     icon: "mdi:alert"
-    entity_category: "diagnostic"
+    entity_category: diagnostic
+
   - platform: econet
     name: "Alarm 3"
     id: alarm_3
     sensor_datapoint: ALARM_03
-    request_mod: 1
+    request_mod: 2
     icon: "mdi:alert"
-    entity_category: "diagnostic"
+    entity_category: diagnostic
+
   - platform: econet
     name: "Alarm 4"
     id: alarm_4
     sensor_datapoint: ALARM_04
-    request_mod: 1
+    request_mod: 2
     icon: "mdi:alert"
-    entity_category: "diagnostic"
+    entity_category: diagnostic
+
   - platform: econet
     name: "Alarm History 1"
     id: alarm_history_1
     sensor_datapoint: ALARMH01
-    request_mod: 2
+    request_mod: 3
     icon: "mdi:alert"
-    entity_category: "diagnostic"
+    entity_category: diagnostic
+
   - platform: econet
     name: "Alarm History 2"
     id: alarm_history_2
     sensor_datapoint: ALARMH02
-    request_mod: 2
+    request_mod: 3
     icon: "mdi:alert"
-    entity_category: "diagnostic"
+    entity_category: diagnostic
+
   - platform: econet
     name: "Software Version Number"
     id: sw_version
@@ -157,7 +104,8 @@ text_sensor:
     request_mod: 4
     request_once: true
     icon: "mdi:information-box"
-    entity_category: "diagnostic"
+    entity_category: diagnostic
+
 switch:
   - platform: econet
     name: "Beep On Alarm"
@@ -165,67 +113,69 @@ switch:
     switch_datapoint: ALRMBEEP
     request_mod: 4
     icon: "mdi:alarm-note"
-    entity_category: "config"
+    entity_category: config
+
   - platform: econet
     name: "Screen Adjustment Lock"
     id: screen_lock
     switch_datapoint: SCRNLOCK
     request_mod: 4
     icon: "mdi:gesture-tap-button"
-    entity_category: "config"
+    entity_category: config
+
   - platform: econet
     name: "Screen Unit in °C"
     id: display_unit
     switch_datapoint: DISPUNIT
     request_mod: 4
     icon: "mdi:temperature-celsius"
-    entity_category: "config"
+    entity_category: config
+
   - platform: econet
     id: resetdev
     switch_datapoint: RESETDEV
     request_mod: none
     internal: true
+
   - platform: econet
     id: alreset
     switch_datapoint: ALRESET
     request_mod: none
     internal: true
+
   - platform: econet
     id: alhisclr
     switch_datapoint: ALHISCLR
     request_mod: none
     internal: true
+
 button:
-  - platform: restart
-    name: "Restart ESP"
-    id: restart_esp
-    icon: "mdi:restart"
-    entity_category: "config"
   - platform: template
     name: "Restart Microcontroller"
     id: restart_mcu
     icon: "mdi:restart"
-    entity_category: "config"
+    entity_category: config
     on_press:
       - switch.turn_on: resetdev
       - delay: 1s
       - switch.turn_off: resetdev
+
   - platform: template
     name: "Alarm Reset"
     id: alarm_reset
     icon: "mdi:restart-alert"
-    entity_category: "config"
+    entity_category: config
     on_press:
       - switch.turn_on: alreset
       - delay: 1s
       - switch.turn_off: alreset
+
   - platform: template
     name: "Alarm History Reset"
     id: alarm_history_reset
     icon: "mdi:restart-alert"
-    entity_category: "config"
+    entity_category: config
     on_press:
       - switch.turn_on: alhisclr
       - delay: 1s
       - switch.turn_off: alhisclr
-binary_sensor:
