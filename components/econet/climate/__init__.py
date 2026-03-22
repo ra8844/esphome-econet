@@ -37,8 +37,8 @@ def ensure_climate_mode_map(value):
     cv.check_not_templatable(value)
     options_map_schema = cv.Schema({cv.uint8_t: climate.validate_climate_mode})
     value = options_map_schema(value)
-    all_values = list(value.keys())
-    unique_values = set(value.keys())
+    all_values = list(value.values())
+    unique_values = set(value.values())
     if len(all_values) != len(unique_values):
         raise cv.Invalid("Mapping values must be unique.")
     return value
@@ -48,8 +48,8 @@ def ensure_option_map(value):
     cv.check_not_templatable(value)
     options_map_schema = cv.Schema({cv.uint8_t: cv.string_strict})
     value = options_map_schema(value)
-    all_values = list(value.keys())
-    unique_values = set(value.keys())
+    all_values = list(value.values())
+    unique_values = set(value.values())
     if len(all_values) != len(unique_values):
         raise cv.Invalid("Mapping values must be unique.")
     return value

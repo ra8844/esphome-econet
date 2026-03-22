@@ -5,6 +5,7 @@
 #include "esphome/components/api/custom_api_device.h"
 #include "esphome/components/binary_sensor/binary_sensor.h"
 #include "esphome/components/uart/uart.h"
+#include <queue>
 #include <map>
 #include <vector>
 #include <set>
@@ -60,7 +61,7 @@ inline bool operator==(const EconetDatapoint &lhs, const EconetDatapoint &rhs) {
     case EconetDatapointType::FLOAT:
       return lhs.value_float == rhs.value_float;
     case EconetDatapointType::TEXT:
-      return lhs.value_enum == rhs.value_enum && lhs.value_string == rhs.value_string;
+      return lhs.value_string == rhs.value_string;
     case EconetDatapointType::ENUM_TEXT:
       return lhs.value_enum == rhs.value_enum;
     case EconetDatapointType::RAW:
@@ -88,8 +89,10 @@ class Econet : public Component, public uart::UARTDevice {
     for (auto i = 0; i < MAX_REQUEST_MODS; i++) {
       request_mod_addresses_[i] = 0;
     }
-    for (auto i = 0; i < request_mods.size(); i++) {
-      request_mod_addresses_[request_mods[i]] = addresses[i];
+    for (size_t i = 0; i < request_mods.size() && i < addresses.size(); i++) {
+      if (request_mods[i] < MAX_REQUEST_MODS) {
+        request_mod_addresses_[request_mods[i]] = addresses[i];
+      }
     }
   }
   void set_request_mod_update_intervals(std::vector<uint8_t> request_mods, std::vector<uint32_t> update_intervals) {
