@@ -1,3 +1,5 @@
+from typing import Any
+
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import climate
@@ -33,7 +35,20 @@ EconetClimate = econet_ns.class_(
 )
 
 
-def ensure_climate_mode_map(value):
+def ensure_climate_mode_map(value: dict[int, str]) -> dict[int, str]:
+    """Validate climate mode mapping configuration.
+    
+    Ensures that all mapped climate mode values are unique and valid.
+    
+    Args:
+        value: Dictionary mapping device codes to climate modes
+        
+    Returns:
+        Validated configuration dictionary
+        
+    Raises:
+        cv.Invalid: If mapping values are not unique
+    """
     cv.check_not_templatable(value)
     options_map_schema = cv.Schema({cv.uint8_t: climate.validate_climate_mode})
     value = options_map_schema(value)
@@ -44,7 +59,20 @@ def ensure_climate_mode_map(value):
     return value
 
 
-def ensure_option_map(value):
+def ensure_option_map(value: dict[int, str]) -> dict[int, str]:
+    """Validate option mapping configuration.
+    
+    Ensures that all mapped option values are unique strings.
+    
+    Args:
+        value: Dictionary mapping device codes to option strings
+        
+    Returns:
+        Validated configuration dictionary
+        
+    Raises:
+        cv.Invalid: If mapping values are not unique
+    """
     cv.check_not_templatable(value)
     options_map_schema = cv.Schema({cv.uint8_t: cv.string_strict})
     value = options_map_schema(value)
@@ -84,7 +112,15 @@ CONFIG_SCHEMA = cv.All(
 )
 
 
-async def to_code(config):
+async def to_code(config: dict[str, Any]) -> None:
+    """Generate C++ code for Econet climate component.
+    
+    Creates a climate entity that controls temperature, modes, presets, and
+    humidity settings for HVAC systems via Econet datapoints.
+    
+    Args:
+        config: Component configuration dictionary from YAML
+    """
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
     await climate.register_climate(var, config)

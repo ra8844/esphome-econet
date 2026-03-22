@@ -1,3 +1,5 @@
+from typing import Any
+
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import switch
@@ -31,7 +33,15 @@ CONFIG_SCHEMA = (
 )
 
 
-async def to_code(config):
+async def to_code(config: dict[str, Any]) -> None:
+    """Generate C++ code for Econet switch component.
+    
+    Creates a switch entity that toggles binary datapoint values on
+    Econet devices from Home Assistant.
+    
+    Args:
+        config: Component configuration dictionary from YAML
+    """
     var = await switch.new_switch(config)
     await cg.register_component(var, config)
 

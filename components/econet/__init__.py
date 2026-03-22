@@ -1,3 +1,5 @@
+from typing import Any
+
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome import automation, pins
@@ -44,7 +46,15 @@ DATAPOINT_TRIGGERS = {
 }
 
 
-def assign_declare_id(value):
+def assign_declare_id(value: dict[str, Any]) -> dict[str, Any]:
+    """Assign and declare trigger IDs for automation configurations.
+    
+    Args:
+        value: Configuration dictionary containing trigger information
+        
+    Returns:
+        Modified configuration dictionary with declared trigger IDs
+    """
     value = value.copy()
     value[CONF_TRIGGER_ID] = cv.declare_id(
         DATAPOINT_TRIGGERS[value[CONF_DATAPOINT_TYPE]]
@@ -52,17 +62,49 @@ def assign_declare_id(value):
     return value
 
 
-def validate_request_mod_range(value):
+def validate_request_mod_range(value: int) -> int:
+    """Validate that request_mod value is within range [0, 15].
+    
+    Args:
+        value: Request mod value to validate
+        
+    Returns:
+        The validated value
+        
+    Raises:
+        cv.Invalid: If value is outside valid range
+    """
     return cv.int_range(min=0, max=15)(value)
 
 
-def request_mod(value):
+def request_mod(value: Any) -> int:
+    """Convert request_mod configuration to integer value.
+    
+    Accepts string "none" or integer value. String "none" converts to -1,
+    otherwise validates as request_mod_range.
+    
+    Args:
+        value: Request mod configuration (string "none" or integer)
+        
+    Returns:
+        Integer representation of request_mod (-1 for "none", 0-15 otherwise)
+    """
     if isinstance(value, str) and value.lower() == "none":
         return -1
     return validate_request_mod_range(value)
 
 
-def validate_request_mod_update_intervals(value):
+def validate_request_mod_update_intervals(value: dict[int, Any]) -> dict[int, Any]:
+    """Validate request_mod update intervals configuration.
+    
+    Maps request_mod values (0-15) to time period millisecond values.
+    
+    Args:
+        value: Dictionary mapping request_mod to time periods
+        
+    Returns:
+        Validated configuration dictionary
+    """
     cv.check_not_templatable(value)
     options_map_schema = cv.Schema(
         {validate_request_mod_range: cv.positive_time_period_milliseconds}
@@ -71,7 +113,17 @@ def validate_request_mod_update_intervals(value):
     return value
 
 
-def validate_request_mod_addresses(value):
+def validate_request_mod_addresses(value: dict[int, Any]) -> dict[int, Any]:
+    """Validate request_mod addresses configuration.
+    
+    Maps request_mod values (0-15) to device addresses.
+    
+    Args:
+        value: Dictionary mapping request_mod to addresses
+        
+    Returns:
+        Validated configuration dictionary
+    """
     cv.check_not_templatable(value)
     options_map_schema = cv.Schema({validate_request_mod_range: cv.uint32_t})
     value = options_map_schema(value)
@@ -125,7 +177,15 @@ ECONET_CLIENT_SCHEMA = cv.Schema(
 )
 
 
-async def to_code(config):
+async def to_code(config: dict[str, Any]) -> None:
+    """Generate C++ code for Econet component.
+    
+    Registers the Econet component and configures UART communication,
+    datapoint update triggers, and MCU connectivity monitoring.
+    
+    Args:
+        config: Component configuration dictionary from YAML
+    """
     cg.add_define("USE_API_HOMEASSISTANT_SERVICES")
     var = cg.new_Pvariable(config[CONF_ID])
 
