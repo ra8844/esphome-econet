@@ -1,3 +1,5 @@
+from typing import Any
+
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import number
@@ -26,7 +28,18 @@ EconetNumber = econet_ns.class_(
 )
 
 
-def validate_min_max(config):
+def validate_min_max(config: dict[str, Any]) -> dict[str, Any]:
+    """Validate that max_value is greater than min_value.
+    
+    Args:
+        config: Configuration dictionary containing min and max values
+        
+    Returns:
+        Validated configuration dictionary
+        
+    Raises:
+        cv.Invalid: If max_value <= min_value
+    """
     if config[CONF_MAX_VALUE] <= config[CONF_MIN_VALUE]:
         raise cv.Invalid("max_value must be greater than min_value")
     return config
@@ -48,7 +61,15 @@ CONFIG_SCHEMA = cv.All(
 )
 
 
-async def to_code(config):
+async def to_code(config: dict[str, Any]) -> None:
+    """Generate C++ code for Econet number component.
+    
+    Creates a number entity for controlling numeric datapoint values
+    (like setpoints or thresholds) on Econet devices.
+    
+    Args:
+        config: Component configuration dictionary from YAML
+    """
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
     await number.register_number(
