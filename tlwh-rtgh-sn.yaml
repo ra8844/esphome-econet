@@ -1,0 +1,140 @@
+substitutions:
+  name: "econet-tlwh-atomic-s3"
+  friendly_name: "Tankless Water Heater"
+  device_description: "Rheem Tankless Water Heater (Atom S3 Lite)"
+
+  tx_pin: GPIO6
+  rx_pin: GPIO5
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  comment: ${device_description}
+  min_version: "2025.11.0"
+
+esp32:
+  board: esp32-s3-devkitc-1
+  variant: esp32s3
+  framework:
+    type: arduino
+
+external_components:
+  - source:
+      type: local
+      path: /config/esphome/external_components/esphome-econet/components
+    components: [econet]
+
+uart:
+  id: econet_uart
+  baud_rate: 38400
+  rx_buffer_size: 1500
+  tx_pin: ${tx_pin}
+  rx_pin: ${rx_pin}
+
+packages:
+  econet-tlwh: !include econet_tankless_water_heater.yaml
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  reboot_timeout: 15min
+  manual_ip:
+    static_ip: 192.168.5.178
+    gateway: 192.168.5.1
+    subnet: 255.255.255.0
+    dns1: 192.168.5.1
+  ap:
+    ssid: "Econet-Fallback"
+    password: "econet123"
+
+captive_portal:
+
+web_server:
+  port: 80
+
+logger:
+  level: INFO
+#  level: VERBOSE
+  tx_buffer_size: 1024
+
+ota:
+  platform: esphome
+  password: "c7d3d20f235ef53cad84c3a00caca66c"
+
+api:
+  port: 6053
+  batch_delay: 50ms
+  listen_backlog: 4
+  max_connections: 8
+  max_send_queue: 10
+  encryption:
+    key: "1tslV9/+SuqN30Kp4zRrd/OLazuMgTG4HNEjdCgKGYI="
+  reboot_timeout: 0s
+
+  services:
+    - service: read
+      variables:
+        datapoint_id: string
+      then:
+        - lambda: id(econet_id).homeassistant_read(datapoint_id);
+
+    - service: read_from_address
+      variables:
+        datapoint_id: string
+        address: int
+      then:
+        - lambda: id(econet_id).homeassistant_read(datapoint_id, address);
+
+    - service: write_enum
+      variables:
+        datapoint_id: string
+        value: int
+      then:
+        - lambda: id(econet_id).homeassistant_write(datapoint_id, (uint8_t) value);
+
+    - service: write_enum_from_address
+      variables:
+        datapoint_id: string
+        value: int
+        address: int
+      then:
+        - lambda: id(econet_id).homeassistant_write(datapoint_id, (uint8_t) value, address);
+
+    - service: write_float
+      variables:
+        datapoint_id: string
+        value: float
+      then:
+        - lambda: id(econet_id).homeassistant_write(datapoint_id, value);
+
+    - service: write_float_from_address
+      variables:
+        datapoint_id: string
+        value: float
+        address: int
+      then:
+        - lambda: id(econet_id).homeassistant_write(datapoint_id, value, address);
+
+sensor:
+  - platform: uptime
+    name: "${friendly_name} Uptime"
+    update_interval: 30s
+
+  - platform: wifi_signal
+    name: "${friendly_name} WiFi RSSI"
+    update_interval: 30s
+
+text_sensor:
+  - platform: wifi_info
+    ip_address:
+      name: "${friendly_name} IP"
+    ssid:
+      name: "${friendly_name} SSID"
+    bssid:
+      name: "${friendly_name} BSSID"
+    mac_address:
+      name: "${friendly_name} MAC"
+
+binary_sensor:
+  - platform: status
+    name: "${friendly_name} Status"
