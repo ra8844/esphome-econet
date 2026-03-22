@@ -85,6 +85,9 @@ void join_obj_names(const std::vector<std::string> &objects, std::vector<uint8_t
 }
 
 std::string trim_trailing_whitespace(const char *p, uint8_t len) {
+  if (len == 0) {
+    return "";
+  }
   const char *endp = p + len - 1;
   while (endp >= p && (*endp == ' ' || *endp == 0)) {
     endp--;
@@ -167,12 +170,12 @@ void Econet::parse_message_(bool is_tx) {
   uint8_t command = b[COMMAND_POS];
   const uint8_t *pdata = b + MSG_HEADER_SIZE;
 
-  ESP_LOGI(TAG, "%s %s", is_tx ? ">>>" : "<<<",
+  ESP_LOGD(TAG, "%s %s", is_tx ? ">>>" : "<<<",
            format_hex_pretty(b, MSG_HEADER_SIZE + data_len + MSG_CRC_SIZE).c_str());
-  ESP_LOGI(TAG, "  Dst Adr : 0x%x", dst_adr);
-  ESP_LOGI(TAG, "  Src Adr : 0x%x", src_adr);
-  ESP_LOGI(TAG, "  Command : %d", command);
-  ESP_LOGI(TAG, "  Data    : %s", format_hex_pretty(pdata, data_len).c_str());
+  ESP_LOGD(TAG, "  Dst Adr : 0x%x", dst_adr);
+  ESP_LOGD(TAG, "  Src Adr : 0x%x", src_adr);
+  ESP_LOGD(TAG, "  Command : %d", command);
+  ESP_LOGD(TAG, "  Data    : %s", format_hex_pretty(pdata, data_len).c_str());
 
   uint16_t crc = (b[MSG_HEADER_SIZE + data_len]) + (b[MSG_HEADER_SIZE + data_len + 1] << 8);
   uint16_t crc_check = crc16(b, MSG_HEADER_SIZE + data_len, 0);
@@ -195,18 +198,22 @@ void Econet::parse_message_(bool is_tx) {
 
   // Track Read Requests
   if (command == READ_COMMAND) {
+    if (data_len < 2) {
+      ESP_LOGW(TAG, "READ_COMMAND too short: data_len=%d", data_len);
+      return;
+    }
     uint8_t type = pdata[0] & 0x7F;
     uint8_t prop_type = pdata[1];
 
-    ESP_LOGI(TAG, "  Type    : %hhu", type);
-    ESP_LOGI(TAG, "  PropType: %hhu", prop_type);
+    ESP_LOGD(TAG, "  Type    : %hhu", type);
+    ESP_LOGD(TAG, "  PropType: %hhu", prop_type);
 
     if (type != 1 && type != 2) {
-      ESP_LOGI(TAG, "  Don't Currently Support This Class Type %hhu", type);
+      ESP_LOGD(TAG, "  Don't Currently Support This Class Type %hhu", type);
       return;
     }
     if (prop_type != 1) {
-      ESP_LOGI(TAG, "  Don't Currently Support This Property Type %hhu", prop_type);
+      ESP_LOGD(TAG, "  Don't Currently Support This Property Type %hhu", prop_type);
       return;
     }
 
@@ -219,7 +226,7 @@ void Econet::parse_message_(bool is_tx) {
     }
     extract_obj_names(pdata, data_len, &obj_names);
     for (auto &obj_name : obj_names) {
-      ESP_LOGI(TAG, "  %s", obj_name.c_str());
+      ESP_LOGD(TAG, "  %s", obj_name.c_str());
     }
     if (!obj_names.empty()) {
       read_req_.dst_adr = dst_adr;
@@ -232,6 +239,11 @@ void Econet::parse_message_(bool is_tx) {
   } else if (command == ACK) {
     if (read_req_.dst_adr == src_adr && read_req_.src_adr == dst_adr && read_req_.awaiting_res) {
       if (read_req_.type == 1 && read_req_.obj_names.size() == 1) {
+        if (data_len < 1) {
+          ESP_LOGW(TAG, "ACK too short: data_len=%d", data_len);
+          read_req_.awaiting_res = false;
+          return;
+        }
         EconetDatapointType item_type = EconetDatapointType(pdata[0] & 0x7F);
         if (item_type == EconetDatapointType::RAW) {
           std::vector<uint8_t> raw(pdata, pdata + data_len);
@@ -274,22 +286,26 @@ void Econet::parse_message_(bool is_tx) {
       read_req_.awaiting_res = false;
     }
   } else if (command == WRITE_COMMAND) {
+    if (data_len < 1) {
+      ESP_LOGW(TAG, "WRITE_COMMAND too short: data_len=%d", data_len);
+      return;
+    }
     uint8_t type = pdata[0];
-    ESP_LOGI(TAG, "  ClssType: %d", type);
-    if (type == 1 && pdata[1] == 1 && data_len >= WRITE_DATA_POS) {
+    ESP_LOGD(TAG, "  ClssType: %d", type);
+    if (type == 1 && data_len >= 2 && pdata[1] == 1 && data_len >= WRITE_DATA_POS) {
       std::string item_name((const char *) pdata + OBJ_NAME_POS, OBJ_NAME_SIZE);
       switch (EconetDatapointType(pdata[2])) {
         case EconetDatapointType::FLOAT:
         case EconetDatapointType::ENUM_TEXT:
           if (data_len == WRITE_DATA_POS + FLOAT_SIZE) {
             float item_value = bytes_to_float(pdata + WRITE_DATA_POS);
-            ESP_LOGI(TAG, "  %s: %f", item_name.c_str(), item_value);
+            ESP_LOGD(TAG, "  %s: %f", item_name.c_str(), item_value);
           } else {
             ESP_LOGW(TAG, "  %s: Unexpected Write Data Length", item_name.c_str());
           }
           break;
         case EconetDatapointType::RAW:
-          ESP_LOGI(TAG, "  %s: %s", item_name.c_str(),
+          ESP_LOGD(TAG, "  %s: %s", item_name.c_str(),
                    format_hex_pretty(pdata + WRITE_DATA_POS, data_len - WRITE_DATA_POS).c_str());
           break;
         case EconetDatapointType::TEXT:
@@ -301,8 +317,12 @@ void Econet::parse_message_(bool is_tx) {
           break;
       }
     } else if (type == 7) {
-      ESP_LOGI(TAG, "  DateTime: %04d/%02d/%02d %02d:%02d:%02d.%02d\n", pdata[9] | pdata[8] << 8, pdata[7], pdata[6],
-               pdata[5], pdata[4], pdata[3], pdata[2]);
+      if (data_len >= 10) {
+        ESP_LOGD(TAG, "  DateTime: %04d/%02d/%02d %02d:%02d:%02d.%02d\n", pdata[9] | pdata[8] << 8, pdata[7], pdata[6],
+                 pdata[5], pdata[4], pdata[3], pdata[2]);
+      } else {
+        ESP_LOGW(TAG, "  DateTime: too short (data_len=%d)", data_len);
+      }
     } else if (type == 9) {
       if (this->dst_adr_ != src_adr) {
         ESP_LOGW(TAG, "Using 0x%x as dst_address from now on. File an issue if you see this more than once.", src_adr);
@@ -322,6 +342,10 @@ void Econet::handle_response_(const EconetDatapointID &datapoint_id, const uint8
   EconetDatapointType item_type = EconetDatapointType(p[0] & 0x7F);
   switch (item_type) {
     case EconetDatapointType::FLOAT: {
+      if (len < 3) {
+        ESP_LOGE(TAG, "Expected len of at least 3 but was %d for %s", len, datapoint_id.name.c_str());
+        return;
+      }
       p += 3;
       len -= 3;
       if (len != FLOAT_SIZE) {
@@ -329,22 +353,30 @@ void Econet::handle_response_(const EconetDatapointID &datapoint_id, const uint8
         return;
       }
       float item_value = bytes_to_float(p);
-      ESP_LOGI(TAG, "  %s : %f", datapoint_id.name.c_str(), item_value);
+      ESP_LOGD(TAG, "  %s : %f", datapoint_id.name.c_str(), item_value);
       this->send_datapoint_(
           datapoint_id,
           EconetDatapoint{.value_raw = {}, .value_string = "", .value_float = item_value, .type = item_type});
       break;
     }
     case EconetDatapointType::TEXT: {
+      if (len < 3) {
+        ESP_LOGE(TAG, "Expected len of at least 3 but was %d for %s", len, datapoint_id.name.c_str());
+        return;
+      }
       p += 3;
       len -= 3;
       std::string s = trim_trailing_whitespace((const char *) p, len);
-      ESP_LOGI(TAG, "  %s : (%s)", datapoint_id.name.c_str(), s.c_str());
+      ESP_LOGD(TAG, "  %s : (%s)", datapoint_id.name.c_str(), s.c_str());
       this->send_datapoint_(datapoint_id,
                             EconetDatapoint{.value_raw = {}, .value_string = s, .value_float = 0, .type = item_type});
       break;
     }
     case EconetDatapointType::ENUM_TEXT: {
+      if (len < 3) {
+        ESP_LOGE(TAG, "Expected len of at least 3 but was %d for %s", len, datapoint_id.name.c_str());
+        return;
+      }
       p += 3;
       len -= 3;
       if (len < 2) {
@@ -358,7 +390,7 @@ void Econet::handle_response_(const EconetDatapointID &datapoint_id, const uint8
         return;
       }
       std::string s = trim_trailing_whitespace((const char *) p + 2, item_text_len);
-      ESP_LOGI(TAG, "  %s : %d (%s)", datapoint_id.name.c_str(), item_value, s.c_str());
+      ESP_LOGD(TAG, "  %s : %d (%s)", datapoint_id.name.c_str(), item_value, s.c_str());
       this->send_datapoint_(
           datapoint_id,
           EconetDatapoint{.value_raw = {}, .value_string = s, .value_enum = item_value, .type = item_type});
@@ -376,9 +408,9 @@ void Econet::handle_response_(const EconetDatapointID &datapoint_id, const uint8
 }
 
 void Econet::read_buffer_(int bytes_available) {
-  uint8_t bytes[bytes_available];
+  std::vector<uint8_t> bytes(bytes_available);
 
-  if (!this->read_array(bytes, bytes_available)) {
+  if (!this->read_array(bytes.data(), bytes_available)) {
     return;
   }
 
@@ -423,7 +455,7 @@ void Econet::loop() {
   int bytes_available = this->available();
   if (bytes_available > 0) {
     this->last_read_data_ = now;
-    ESP_LOGI(TAG, "Read %d. ms=%" PRIu32, bytes_available, now);
+    ESP_LOGD(TAG, "Read %d. ms=%" PRIu32, bytes_available, now);
     this->read_buffer_(bytes_available);
     return;
   }
