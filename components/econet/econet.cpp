@@ -37,8 +37,7 @@ static inline bool is_write_only_datapoint_(const std::string &name) {
 float bytes_to_float(const uint8_t *b) {
   uint8_t byte_array[] = {b[3], b[2], b[1], b[0]};
   float result;
-  std::copy(reinterpret_cast<const char *>(&byte_array[0]), reinterpret_cast<const char *>(&byte_array[4]),
-            reinterpret_cast<char *>(&result));
+  memcpy(&result, byte_array, sizeof result);
   return result;
 }
 
@@ -78,7 +77,7 @@ void join_obj_names(const std::vector<std::string> &objects, std::vector<uint8_t
   for (const auto &s : objects) {
     data->push_back(0);
     data->push_back(0);
-    for (int j = 0; j < OBJ_NAME_SIZE; j++) {
+    for (size_t j = 0; j < OBJ_NAME_SIZE; j++) {
       data->push_back(j < s.length() ? s[j] : 0);
     }
   }
@@ -486,7 +485,7 @@ void Econet::write_value_(const std::string &object, EconetDatapointType type, f
   data.push_back(0);
   data.push_back(0);
 
-  for (int j = 0; j < OBJ_NAME_SIZE; j++) {
+  for (size_t j = 0; j < OBJ_NAME_SIZE; j++) {
     data.push_back(j < object.length() ? object[j] : 0);
   }
 

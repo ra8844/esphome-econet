@@ -86,7 +86,7 @@ class Econet : public Component, public uart::UARTDevice {
   void set_src_address(uint32_t address) { src_adr_ = address; }
   void set_dst_address(uint32_t address) { dst_adr_ = address; }
   void set_request_mod_addresses(std::vector<uint8_t> request_mods, std::vector<uint32_t> addresses) {
-    for (auto i = 0; i < MAX_REQUEST_MODS; i++) {
+    for (size_t i = 0; i < MAX_REQUEST_MODS; i++) {
       request_mod_addresses_[i] = 0;
     }
     for (size_t i = 0; i < request_mods.size() && i < addresses.size(); i++) {
@@ -96,7 +96,7 @@ class Econet : public Component, public uart::UARTDevice {
     }
   }
   void set_request_mod_update_intervals(std::vector<uint8_t> request_mods, std::vector<uint32_t> update_intervals) {
-    for (auto i = 0; i < request_mods.size(); i++) {
+    for (size_t i = 0; i < request_mods.size(); i++) {
       request_mod_update_interval_millis_map_[request_mods[i]] = update_intervals[i];
     }
     update_intervals_();
@@ -197,7 +197,7 @@ class EconetClient {
   void set_src_adr(uint32_t src_adr) { this->src_adr_ = src_adr; }
 
  protected:
-  Econet *parent_;
+  Econet *parent_{nullptr};
   uint32_t src_adr_{0};
   int8_t request_mod_{0};
   bool request_once_{false};
