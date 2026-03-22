@@ -86,6 +86,7 @@ text_sensor:
     id: alarm_history_1
     sensor_datapoint: ALARMH01
     request_mod: 3
+    request_once: true
     icon: "mdi:alert"
     entity_category: diagnostic
 
@@ -94,6 +95,7 @@ text_sensor:
     id: alarm_history_2
     sensor_datapoint: ALARMH02
     request_mod: 3
+    request_once: true
     icon: "mdi:alert"
     entity_category: diagnostic
 
