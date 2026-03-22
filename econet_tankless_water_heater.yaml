@@ -38,7 +38,6 @@ sensor:
     entity_category: diagnostic
     request_mod: 1
 
-
   - platform: econet
     name: "Temperature Out"
     id: temp_out
@@ -49,7 +48,6 @@ sensor:
     state_class: measurement
     entity_category: diagnostic
     request_mod: 1
-
 
   - platform: econet
     name: "Water Used"
@@ -62,7 +60,6 @@ sensor:
     entity_category: diagnostic
     request_mod: 2
 
-
   - platform: econet
     name: "Ignition Cycles"
     id: ignition_cycles
@@ -71,7 +68,6 @@ sensor:
     entity_category: diagnostic
     icon: "mdi:heating-coil"
     request_mod: 2
-
 
 # Only remove these if they exist in econet_base.yaml with these IDs.
 switch:
