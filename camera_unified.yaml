@@ -1,0 +1,103 @@
+# ==========================================================
+# Unified Cameras via go2rtc
+# File: /config/camera_unified.yaml
+#
+# Covers: ONVIF, Wyze, Eufy cameras via Mac Mini go2rtc
+#         (192.168.5.87:8554 RTSP, 1984 snapshot API)
+#
+# NOT included here (use native HA integration):
+#   - Reolink cameras → Settings > Integrations > Reolink
+#
+# ON HOLD (connectivity issues):
+#   - Front doorbell (August, 192.168.5.91)
+# ==========================================================
+
+# ----------------------------------------------------------
+# ONVIF Cameras (GF-PH200 / Hipcam) via go2rtc
+# ----------------------------------------------------------
+
+- platform: generic
+  name: master_bathroom_camera_1_main
+  still_image_url: "http://192.168.5.87:1984/api/frame.jpeg?src=master_bathroom_camera_1_main"
+  stream_source: "rtsp://192.168.5.87:8554/master_bathroom_camera_1_main"
+  verify_ssl: false
+
+- platform: generic
+  name: master_bathroom_camera_2_main
+  still_image_url: "http://192.168.5.87:1984/api/frame.jpeg?src=master_bathroom_camera_2_main"
+  stream_source: "rtsp://192.168.5.87:8554/master_bathroom_camera_2_main"
+  verify_ssl: false
+
+- platform: generic
+  name: master_bedroom_camera_1_main
+  still_image_url: "http://192.168.5.87:1984/api/frame.jpeg?src=master_bedroom_camera_1_main"
+  stream_source: "rtsp://192.168.5.87:8554/master_bedroom_camera_1_main"
+  verify_ssl: false
+
+- platform: generic
+  name: hallway_camera_1_main
+  still_image_url: "http://192.168.5.87:1984/api/frame.jpeg?src=hallway_camera_1_main"
+  stream_source: "rtsp://192.168.5.87:8554/hallway_camera_1_main"
+  verify_ssl: false
+
+- platform: generic
+  name: hallway_camera_2_main
+  still_image_url: "http://192.168.5.87:1984/api/frame.jpeg?src=hallway_camera_2_main"
+  stream_source: "rtsp://192.168.5.87:8554/hallway_camera_2_main"
+  verify_ssl: false
+
+- platform: generic
+  name: kitchen_camera_1_main
+  still_image_url: "http://192.168.5.87:1984/api/frame.jpeg?src=kitchen_camera_1_main"
+  stream_source: "rtsp://192.168.5.87:8554/kitchen_camera_1_main"
+  verify_ssl: false
+
+- platform: generic
+  name: kitchen_camera_2_main
+  still_image_url: "http://192.168.5.87:1984/api/frame.jpeg?src=kitchen_camera_2_main"
+  stream_source: "rtsp://192.168.5.87:8554/kitchen_camera_2_main"
+  verify_ssl: false
+
+- platform: generic
+  name: office_camera_main
+  still_image_url: "http://192.168.5.87:1984/api/frame.jpeg?src=office_camera_main"
+  stream_source: "rtsp://192.168.5.87:8554/office_camera_main"
+  verify_ssl: false
+
+# ----------------------------------------------------------
+# Wyze Cameras via go2rtc (wyze:// → RTSP rebroadcast)
+# Motion events via wyze-bridge → MQTT
+# ----------------------------------------------------------
+
+- platform: generic
+  name: living_room_camera_main
+  still_image_url: "http://192.168.5.87:1984/api/frame.jpeg?src=living_room_camera_main"
+  stream_source: "rtsp://192.168.5.87:8554/living_room_camera_main"
+  verify_ssl: false
+
+- platform: generic
+  name: front_door_camera_main
+  still_image_url: "http://192.168.5.87:1984/api/frame.jpeg?src=front_door_camera_main"
+  stream_source: "rtsp://192.168.5.87:8554/front_door_camera_main"
+  verify_ssl: false
+
+# ----------------------------------------------------------
+# Eufy Garage Camera via go2rtc
+# ----------------------------------------------------------
+
+- platform: generic
+  name: eufy_garage_camera_1_main
+  still_image_url: "http://192.168.5.87:1984/api/frame.jpeg?src=eufy_garage_camera_1_main"
+  stream_source: "rtsp://192.168.5.87:8554/eufy_garage_camera_1_main"
+  verify_ssl: false
+
+# ----------------------------------------------------------
+# ON HOLD — Front Doorbell (August / 3rd party, 192.168.5.91)
+# Connectivity issues — needs investigation
+# ----------------------------------------------------------
+
+# - platform: generic
+#   name: front_doorbell_main
+#   still_image_url: "http://192.168.5.87:1984/api/frame.jpeg?src=front_doorbell_main"
+#   stream_source: "rtsp://192.168.5.87:8554/front_doorbell_main"
+#   verify_ssl: false

@@ -1,0 +1,346 @@
+title: High-Res Bridge
+path: high_res_bridge
+icon: mdi:video-high-definition
+badges: []
+
+cards:
+  - type: entities
+    title: Location
+    show_header_toggle: false
+    entities:
+      - entity: input_select.cam_view_area
+        name: Area
+
+  # ==========================================================
+  # ALL
+  # ==========================================================
+  - type: conditional
+    conditions:
+      - entity: input_select.cam_view_area
+        state: "All"
+    card:
+      type: custom:advanced-camera-card
+      live:
+        display:
+          mode: grid
+          grid_columns: 3
+      cameras:
+        - camera_entity: camera.front_door_camera_main
+          name: Front Door Camera
+          live_provider: webrtc-card
+          webrtc_card: { ui: true }
+
+        - camera_entity: camera.courtyard_doorbell_fluent
+          name: Courtyard Doorbell
+          live_provider: webrtc-card
+          webrtc_card: { ui: true }
+
+        - camera_entity: camera.backyard_doorbell_fluent
+          name: Backyard Doorbell
+          live_provider: webrtc-card
+          webrtc_card: { ui: true }
+
+        - camera_entity: camera.garage_outside_doorbell_fluent
+          name: Garage Doorbell
+          live_provider: webrtc-card
+          webrtc_card: { ui: true }
+
+        - camera_entity: camera.garage_outside_camera_fluent
+          name: Garage Outside Camera
+          live_provider: webrtc-card
+          webrtc_card: { ui: true }
+
+        - camera_entity: camera.eufy_garage_camera_1_main
+          name: Garage Camera (Interior)
+          live_provider: webrtc-card
+          webrtc_card: { ui: true }
+
+        - camera_entity: camera.kitchen_camera_1_main
+          name: Kitchen Camera 1
+          live_provider: webrtc-card
+          webrtc_card: { ui: true }
+
+        - camera_entity: camera.kitchen_camera_2_main
+          name: Kitchen Camera 2
+          live_provider: webrtc-card
+          webrtc_card: { ui: true }
+
+        - camera_entity: camera.living_room_camera_main
+          name: Living Room Camera
+          live_provider: webrtc-card
+          webrtc_card: { ui: true }
+
+        - camera_entity: camera.hallway_camera_1_main
+          name: Hallway Camera 1
+          live_provider: webrtc-card
+          webrtc_card: { ui: true }
+
+        - camera_entity: camera.hallway_camera_2_main
+          name: Hallway Camera 2
+          live_provider: webrtc-card
+          webrtc_card: { ui: true }
+
+        - camera_entity: camera.master_bedroom_camera_1_main
+          name: Master Bedroom Camera
+          live_provider: webrtc-card
+          webrtc_card: { ui: true }
+
+        - camera_entity: camera.master_bathroom_camera_1_main
+          name: Master Bath Camera 1
+          live_provider: webrtc-card
+          webrtc_card: { ui: true }
+
+        - camera_entity: camera.master_bathroom_camera_2_main
+          name: Master Bath Camera 2
+          live_provider: webrtc-card
+          webrtc_card: { ui: true }
+
+        - camera_entity: camera.office_camera_main
+          name: Office
+          live_provider: webrtc-card
+          webrtc_card: { ui: true }
+
+  # ==========================================================
+  # DOORBELL / OUTSIDE
+  # ==========================================================
+  - type: conditional
+    conditions:
+      - entity: input_select.cam_view_area
+        state: "Doorbell/Outside"
+    card:
+      type: custom:advanced-camera-card
+      live:
+        display:
+          mode: grid
+          grid_columns: 2
+      cameras:
+        - camera_entity: camera.front_door_camera_main
+          name: Front Door Camera
+          live_provider: webrtc-card
+          webrtc_card: { ui: true }
+
+        - camera_entity: camera.courtyard_doorbell_fluent
+          name: Courtyard Doorbell
+          live_provider: webrtc-card
+          webrtc_card: { ui: true }
+
+        - camera_entity: camera.backyard_doorbell_fluent
+          name: Backyard Doorbell
+          live_provider: webrtc-card
+          webrtc_card: { ui: true }
+
+        - camera_entity: camera.garage_outside_doorbell_fluent
+          name: Garage Doorbell
+          live_provider: webrtc-card
+          webrtc_card: { ui: true }
+
+        - camera_entity: camera.garage_outside_camera_fluent
+          name: Garage Outside Camera
+          live_provider: webrtc-card
+          webrtc_card: { ui: true }
+
+  # ==========================================================
+  # ENTRYWAY / FRONT
+  # ==========================================================
+  - type: conditional
+    conditions:
+      - entity: input_select.cam_view_area
+        state: "Entryway/Front"
+    card:
+      type: custom:advanced-camera-card
+      live:
+        display:
+          mode: grid
+          grid_columns: 1
+      cameras:
+        - camera_entity: camera.front_door_camera_main
+          name: Front Door Camera
+          live_provider: webrtc-card
+          webrtc_card: { ui: true }
+
+  # ==========================================================
+  # BACKYARD
+  # ==========================================================
+  - type: conditional
+    conditions:
+      - entity: input_select.cam_view_area
+        state: "Backyard"
+    card:
+      type: custom:advanced-camera-card
+      live:
+        display:
+          mode: grid
+          grid_columns: 2
+      cameras:
+        - camera_entity: camera.backyard_doorbell_fluent
+          name: Backyard Doorbell
+          live_provider: webrtc-card
+          webrtc_card: { ui: true }
+
+        - camera_entity: camera.garage_outside_camera_fluent
+          name: Garage Outside Camera
+          live_provider: webrtc-card
+          webrtc_card: { ui: true }
+
+  # ==========================================================
+  # COURTYARD
+  # ==========================================================
+  - type: conditional
+    conditions:
+      - entity: input_select.cam_view_area
+        state: "Courtyard"
+    card:
+      type: custom:advanced-camera-card
+      live:
+        display:
+          mode: grid
+          grid_columns: 1
+      cameras:
+        - camera_entity: camera.courtyard_doorbell_fluent
+          name: Courtyard Doorbell
+          live_provider: webrtc-card
+          webrtc_card: { ui: true }
+
+  # ==========================================================
+  # GARAGE
+  # ==========================================================
+  - type: conditional
+    conditions:
+      - entity: input_select.cam_view_area
+        state: "Garage"
+    card:
+      type: custom:advanced-camera-card
+      live:
+        display:
+          mode: grid
+          grid_columns: 2
+      cameras:
+        - camera_entity: camera.garage_outside_doorbell_fluent
+          name: Garage Doorbell
+          live_provider: webrtc-card
+          webrtc_card: { ui: true }
+
+        - camera_entity: camera.garage_outside_camera_fluent
+          name: Garage Outside Camera
+          live_provider: webrtc-card
+          webrtc_card: { ui: true }
+
+        - camera_entity: camera.eufy_garage_camera_1_main
+          name: Garage Camera (Interior)
+          live_provider: webrtc-card
+          webrtc_card: { ui: true }
+
+  # ==========================================================
+  # KITCHEN
+  # ==========================================================
+  - type: conditional
+    conditions:
+      - entity: input_select.cam_view_area
+        state: "Kitchen"
+    card:
+      type: custom:advanced-camera-card
+      live:
+        display:
+          mode: grid
+          grid_columns: 2
+      cameras:
+        - camera_entity: camera.kitchen_camera_1_main
+          name: Kitchen Camera 1
+          live_provider: webrtc-card
+          webrtc_card: { ui: true }
+
+        - camera_entity: camera.kitchen_camera_2_main
+          name: Kitchen Camera 2
+          live_provider: webrtc-card
+          webrtc_card: { ui: true }
+
+  # ==========================================================
+  # LIVING ROOM
+  # ==========================================================
+  - type: conditional
+    conditions:
+      - entity: input_select.cam_view_area
+        state: "Living Room"
+    card:
+      type: custom:advanced-camera-card
+      live:
+        display:
+          mode: grid
+          grid_columns: 1
+      cameras:
+        - camera_entity: camera.living_room_camera_main
+          name: Living Room Camera
+          live_provider: webrtc-card
+          webrtc_card: { ui: true }
+
+  # ==========================================================
+  # HALLWAY
+  # ==========================================================
+  - type: conditional
+    conditions:
+      - entity: input_select.cam_view_area
+        state: "Hallway"
+    card:
+      type: custom:advanced-camera-card
+      live:
+        display:
+          mode: grid
+          grid_columns: 2
+      cameras:
+        - camera_entity: camera.hallway_camera_1_main
+          name: Hallway Camera 1
+          live_provider: webrtc-card
+          webrtc_card: { ui: true }
+
+        - camera_entity: camera.hallway_camera_2_main
+          name: Hallway Camera 2
+          live_provider: webrtc-card
+          webrtc_card: { ui: true }
+
+  # ==========================================================
+  # OFFICE
+  # ==========================================================
+  - type: conditional
+    conditions:
+      - entity: input_select.cam_view_area
+        state: "Office"
+    card:
+      type: custom:advanced-camera-card
+      live:
+        display:
+          mode: grid
+          grid_columns: 1
+      cameras:
+        - camera_entity: camera.office_camera_main
+          name: Office Camera
+          live_provider: webrtc-card
+          webrtc_card: { ui: true }
+
+  # ==========================================================
+  # MASTER SUITE
+  # ==========================================================
+  - type: conditional
+    conditions:
+      - entity: input_select.cam_view_area
+        state: "Massa"
+    card:
+      type: custom:advanced-camera-card
+      live:
+        display:
+          mode: grid
+          grid_columns: 2
+      cameras:
+        - camera_entity: camera.master_bedroom_camera_1_main
+          name: Master Bedroom Camera
+          live_provider: webrtc-card
+          webrtc_card: { ui: true }
+
+        - camera_entity: camera.master_bathroom_camera_1_main
+          name: Master Bath Camera 1
+          live_provider: webrtc-card
+          webrtc_card: { ui: true }
+
+        - camera_entity: camera.master_bathroom_camera_2_main
+          name: Master Bath Camera 2
+          live_provider: webrtc-card
+          webrtc_card: { ui: true }
