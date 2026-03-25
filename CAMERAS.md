@@ -266,3 +266,51 @@ front_doorbell_sub: rtsp://192.168.5.91:554/live/stream
 5. **Cameras NOT in HA HomeKit bridge** — Scrypted provides better HKSV support, hardware transcoding (Apple Silicon), and prebuffering. HA HomeKit bridge is used for non-camera entities only (locks, lights, sensors, thermostats).
 
 6. **Standalone HomeKit accessories** — Each Scrypted camera is configured with `homekit:standalone=true` and paired individually in Home app (not through HA bridge).
+
+---
+
+## Session Log: 2026-03-24 — Full Scrypted Rebuild
+
+### What Happened
+
+Scrypted's LevelDB database was corrupted after a forced process kill (`launchctl kickstart -k`) mid-write. Multiple repair attempts (`ClassicLevel.repair()`) each stripped more data. Eventually all camera devices and plugin state were lost.
+
+**Resolution:** Clean slate — backed up the broken DB, wiped it, and rebuilt everything from scratch.
+
+### What Was Rebuilt
+
+1. **Plugins reinstalled** (manually via Scrypted UI):
+   - `@scrypted/onvif` — generic ONVIF cameras
+   - `@scrypted/rtsp` — Wyze cameras via go2rtc
+   - `@apocaliss92/scrypted-reolink-native` — Reolink doorbells + cameras
+   - `@scrypted/homekit` — HomeKit bridge
+   - `@scrypted/mqtt` — Wyze motion sensors (MQTT virtual devices)
+   - `@scrypted/coreml` — Apple Silicon object detection
+   - `@scrypted/objectdetector` — Video Analysis Plugin
+   - `@scrypted/webrtc` — WebRTC support
+   - `@scrypted/prebuffer-mixin` (Rebroadcast)
+   - `@scrypted/snapshot`
+
+2. **All 14 cameras re-added** with correct plugin, credentials, and RTSP/ONVIF URLs sourced from `/Users/sn/docker/go2rtc.yaml` and HA Reolink integration.
+
+3. **Mixins applied** to all cameras: HomeKit (standalone), Rebroadcast, Snapshot.
+
+4. **MQTT motion sensors recreated** with `template: "motion-sensor.ts"` — required to get `MotionSensor` interface. Previously created without template, giving only `DeviceProvider,Settings` and no script.
+
+5. **All HomeKit PINs regenerated** (new PINs — old PINs from previous Scrypted instance are invalid). Updated in this file.
+
+### Key Lessons
+
+- **Never use `launchctl kickstart -k` on Scrypted** — it kills mid-write and corrupts LevelDB. Use Scrypted UI restart or `launchctl stop` instead.
+- **MQTT motion sensor devices** must be created with `template: "motion-sensor.ts"` in the `createDevice` call.
+- **RTSP camera URL setting key** is `urls` (plural), not `url`.
+- **ONVIF `createDevice`** needs `{ip, httpPort:"8080", username, password}` and benefits from `skipValidate:true` to avoid per-camera timeout.
+- **HomeKit PINs** are only available after `homekit:standalone=true` is set and the mixin initializes (~30s).
+- **Wyze motion** flows: wyze-bridge Docker → MQTT topic `wyzebridge/<camera>/motion` → Scrypted MQTT virtual device → HKSV trigger.
+
+### Recovery Sources Used
+
+- **ONVIF camera IPs**: `/Users/sn/docker/go2rtc.yaml` on Mac Mini
+- **Reolink camera IPs**: HA Reolink integration API (`192.168.5.182`)
+- **Wyze go2rtc streams**: `/Users/sn/docker/go2rtc.yaml`
+- **MQTT broker**: `192.168.5.182:1883`, username `snassar`
