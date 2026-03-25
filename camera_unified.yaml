@@ -1,9 +1,9 @@
 # ==========================================================
-# Unified Cameras via go2rtc
+# Unified Cameras via go2rtc (FFmpeg)
 # File: /config/camera_unified.yaml
 #
 # Covers: ONVIF, Wyze, Eufy cameras via Mac Mini go2rtc
-#         (192.168.5.87:8554 RTSP, 1984 snapshot API)
+#         (192.168.5.87:8554 RTSP)
 #
 # NOT included here (use native HA integration):
 #   - Reolink cameras → Settings > Integrations > Reolink
@@ -16,88 +16,64 @@
 # ONVIF Cameras (GF-PH200 / Hipcam) via go2rtc
 # ----------------------------------------------------------
 
-- platform: generic
+- platform: ffmpeg
   name: master_bathroom_camera_1_main
-  still_image_url: "http://192.168.5.87:1984/api/frame.jpeg?src=master_bathroom_camera_1_main"
-  stream_source: "rtsp://192.168.5.87:8554/master_bathroom_camera_1_main"
-  verify_ssl: false
+  input: rtsp://192.168.5.87:8554/master_bathroom_camera_1_main
 
-- platform: generic
+- platform: ffmpeg
   name: master_bathroom_camera_2_main
-  still_image_url: "http://192.168.5.87:1984/api/frame.jpeg?src=master_bathroom_camera_2_main"
-  stream_source: "rtsp://192.168.5.87:8554/master_bathroom_camera_2_main"
-  verify_ssl: false
+  input: rtsp://192.168.5.87:8554/master_bathroom_camera_2_main
 
-- platform: generic
+- platform: ffmpeg
   name: master_bedroom_camera_1_main
-  still_image_url: "http://192.168.5.87:1984/api/frame.jpeg?src=master_bedroom_camera_1_main"
-  stream_source: "rtsp://192.168.5.87:8554/master_bedroom_camera_1_main"
-  verify_ssl: false
+  input: rtsp://192.168.5.87:8554/master_bedroom_camera_1_main
 
-- platform: generic
+- platform: ffmpeg
   name: hallway_camera_1_main
-  still_image_url: "http://192.168.5.87:1984/api/frame.jpeg?src=hallway_camera_1_main"
-  stream_source: "rtsp://192.168.5.87:8554/hallway_camera_1_main"
-  verify_ssl: false
+  input: rtsp://192.168.5.87:8554/hallway_camera_1_main
 
-- platform: generic
+- platform: ffmpeg
   name: hallway_camera_2_main
-  still_image_url: "http://192.168.5.87:1984/api/frame.jpeg?src=hallway_camera_2_main"
-  stream_source: "rtsp://192.168.5.87:8554/hallway_camera_2_main"
-  verify_ssl: false
+  input: rtsp://192.168.5.87:8554/hallway_camera_2_main
 
-- platform: generic
+- platform: ffmpeg
   name: kitchen_camera_1_main
-  still_image_url: "http://192.168.5.87:1984/api/frame.jpeg?src=kitchen_camera_1_main"
-  stream_source: "rtsp://192.168.5.87:8554/kitchen_camera_1_main"
-  verify_ssl: false
+  input: rtsp://192.168.5.87:8554/kitchen_camera_1_main
 
-- platform: generic
+- platform: ffmpeg
   name: kitchen_camera_2_main
-  still_image_url: "http://192.168.5.87:1984/api/frame.jpeg?src=kitchen_camera_2_main"
-  stream_source: "rtsp://192.168.5.87:8554/kitchen_camera_2_main"
-  verify_ssl: false
+  input: rtsp://192.168.5.87:8554/kitchen_camera_2_main
 
-- platform: generic
+- platform: ffmpeg
   name: office_camera_main
-  still_image_url: "http://192.168.5.87:1984/api/frame.jpeg?src=office_camera_main"
-  stream_source: "rtsp://192.168.5.87:8554/office_camera_main"
-  verify_ssl: false
+  input: rtsp://192.168.5.87:8554/office_camera_main
 
 # ----------------------------------------------------------
 # Wyze Cameras via go2rtc (wyze:// → RTSP rebroadcast)
 # Motion events via wyze-bridge → MQTT
 # ----------------------------------------------------------
 
-- platform: generic
+- platform: ffmpeg
   name: living_room_camera_main
-  still_image_url: "http://192.168.5.87:1984/api/frame.jpeg?src=living_room_camera_main"
-  stream_source: "rtsp://192.168.5.87:8554/living_room_camera_main"
-  verify_ssl: false
+  input: rtsp://192.168.5.87:8554/living_room_camera_main
 
-- platform: generic
+- platform: ffmpeg
   name: front_door_camera_main
-  still_image_url: "http://192.168.5.87:1984/api/frame.jpeg?src=front_door_camera_main"
-  stream_source: "rtsp://192.168.5.87:8554/front_door_camera_main"
-  verify_ssl: false
+  input: rtsp://192.168.5.87:8554/front_door_camera_main
 
 # ----------------------------------------------------------
 # Eufy Garage Camera via go2rtc
 # ----------------------------------------------------------
 
-- platform: generic
+- platform: ffmpeg
   name: eufy_garage_camera_1_main
-  still_image_url: "http://192.168.5.87:1984/api/frame.jpeg?src=eufy_garage_camera_1_main"
-  stream_source: "rtsp://192.168.5.87:8554/eufy_garage_camera_1_main"
-  verify_ssl: false
+  input: rtsp://192.168.5.87:8554/eufy_garage_camera_1_main
 
 # ----------------------------------------------------------
 # ON HOLD — Front Doorbell (August / 3rd party, 192.168.5.91)
 # Connectivity issues — needs investigation
 # ----------------------------------------------------------
 
-# - platform: generic
+# - platform: ffmpeg
 #   name: front_doorbell_main
-#   still_image_url: "http://192.168.5.87:1984/api/frame.jpeg?src=front_doorbell_main"
-#   stream_source: "rtsp://192.168.5.87:8554/front_doorbell_main"
-#   verify_ssl: false
+#   input: rtsp://192.168.5.87:8554/front_doorbell_main
