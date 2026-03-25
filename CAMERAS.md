@@ -103,7 +103,7 @@ Brand: GF-PH200 / Hipcam (cheap ONVIF knockoff cameras)
 | Hallway Camera 1 | Hallway | 192.168.5.245 | 8080 | 41 |
 | Hallway Camera 2 | Hallway | 192.168.5.248 | 8080 | 42 |
 | Kitchen Camera 1 | Kitchen | 192.168.5.18 | 8080 | 43 |
-| Kitchen Camera 2 | Kitchen | 192.168.5.53 | 8080 | 44 |
+| Kitchen Camera 2 | Kitchen | 192.168.5.64 | 8080 | 44 |
 | Office Camera | Office | 192.168.5.55 | 8080 | 45 |
 
 **Credentials:** username `admin` (see local credentials store)
