@@ -66,10 +66,10 @@ Camera Hardware
 
 | Camera | Location | Type | IP | Scrypted ID |
 |--------|----------|------|----|-------------|
-| Courtyard Doorbell | Front courtyard | Reolink Doorbell | 192.168.5.141 | 182 |
-| Garage Outside Doorbell | Garage exterior | Reolink Doorbell | 192.168.5.163 | 179 |
-| Backyard Doorbell | Backyard | Reolink Doorbell | 192.168.5.74 | 180 |
-| Garage Outside Camera | Garage | Reolink PTZ | 192.168.5.84 | 178 |
+| Courtyard Doorbell | Front courtyard | Reolink Doorbell | 192.168.5.141 | 48 |
+| Backyard Doorbell | Backyard | Reolink Doorbell | 192.168.5.163 | 59 |
+| Garage Outside Doorbell | Garage exterior | Reolink Doorbell | 192.168.5.74 | 53 |
+| Garage Outside Camera | Garage | Reolink PTZ | 192.168.5.84 | 64 |
 
 **Credentials:** username `admin` (see local credentials store)
 
@@ -97,14 +97,14 @@ Brand: GF-PH200 / Hipcam (cheap ONVIF knockoff cameras)
 
 | Camera | Location | IP | ONVIF Port | Scrypted ID |
 |--------|----------|----|------------|-------------|
-| Master Bathroom Camera 1 | Master bathroom | 192.168.5.174 | 8080 | 166 |
-| Master Bathroom Camera 2 | Master bathroom | 192.168.5.142 | 8080 | 167 |
-| Hallway Camera 1 | Hallway | 192.168.5.245 | 8080 | 171 |
-| Hallway Camera 2 | Hallway | 192.168.5.248 | 8080 | 172 |
-| Kitchen Camera 1 | Kitchen | 192.168.5.18 | 8080 | 169 |
-| Kitchen Camera 2 | Kitchen | 192.168.5.53 | 8080 | 170 |
-| Master Bedroom Camera 1 | Master bedroom | 192.168.5.236 | 8080 | 173 |
-| Office Camera | Office | 192.168.5.55 | 8080 | 168 |
+| Master Bathroom Camera 1 | Master bathroom | 192.168.5.174 | 8080 | 38 |
+| Master Bathroom Camera 2 | Master bathroom | 192.168.5.142 | 8080 | 39 |
+| Master Bedroom Camera 1 | Master bedroom | 192.168.5.236 | 8080 | 40 |
+| Hallway Camera 1 | Hallway | 192.168.5.245 | 8080 | 41 |
+| Hallway Camera 2 | Hallway | 192.168.5.248 | 8080 | 42 |
+| Kitchen Camera 1 | Kitchen | 192.168.5.18 | 8080 | 43 |
+| Kitchen Camera 2 | Kitchen | 192.168.5.53 | 8080 | 44 |
+| Office Camera | Office | 192.168.5.55 | 8080 | 45 |
 
 **Credentials:** username `admin` (see local credentials store)
 
@@ -125,8 +125,8 @@ master_bathroom_camera_1_sub: rtsp://admin:<password>@192.168.5.174:554/12
 - RTSP URLs: `rtsp://192.168.5.87:8554/<camera>_main` (Opus audio from go2rtc transcode)
 - Motion: CoreML object detection (M1 Neural Engine) via `@scrypted/coreml` + `@scrypted/objectdetector` mixins
 - go2rtc is single ONVIF connection to camera — protects cheap cameras from multiple connections
-- Scrypted device IDs: TBD (fresh install 2026-03-25)
-- All have Rebroadcast + Snapshot + HomeKit mixins
+- Scrypted device IDs: see table above
+- All have Rebroadcast + WebRTC + Snapshot + HomeKit + CoreML (ObjectDetector) mixins
 - All set to standalone HomeKit accessory mode
 
 **Known limitations:**
@@ -173,7 +173,7 @@ ptz:
 
 **Scrypted:** `@scrypted/rtsp` plugin — connects to go2rtc RTSP rebroadcast
 - RTSP URLs: `rtsp://192.168.5.87:8554/living_room_camera_main`, `rtsp://192.168.5.87:8554/front_door_camera_main`
-- Scrypted IDs: TBD (fresh install 2026-03-25)
+- Scrypted IDs: 46 (Living Room Camera), 47 (Front Door Camera)
 - Motion events: CoreML object detection (M1 Neural Engine) via `@scrypted/coreml` + `@scrypted/objectdetector` mixins
 - HKSV triggered by CoreML motion — no MQTT, no wyze-bridge required
 
@@ -194,7 +194,7 @@ ptz:
 
 **go2rtc config:**
 ```yaml
-eufy_garage_camera_1_main: rtsp://Sharif_Nassar275:Egyptian_0221975@192.168.5.179/live0
+eufy_garage_camera_1_main: rtsp://admin:<password>@192.168.5.179/live0
 ```
 
 **Scrypted:** `@scrypted/rtsp` plugin — **not yet added** (pending)
@@ -343,6 +343,67 @@ Scrypted's LevelDB database was corrupted after a forced process kill (`launchct
 
 ---
 
+## Session Log: 2026-03-25 — Full Programmatic Setup (Fresh Native Scrypted)
+
+### What Was Done
+
+Complete programmatic setup of native Scrypted on Mac Mini M1 — no UI required.
+
+1. **Admin account created** via HTTP POST `/login` — returned short API token
+2. **CLI auth** — wrote token to `~/.scrypted/login.json` to allow `npx scrypted install` without TTY
+3. **8 plugins installed** via `npx scrypted install <plugin> 127.0.0.1`
+4. **All 14 cameras added** via `@scrypted/client` SDK (`createDevice()` on RTSP and Reolink plugin devices)
+5. **All mixins applied** programmatically via `pluginsComponent.setMixins()`:
+   - RTSP cameras: Rebroadcast (2) + WebRTC (7) + Snapshot (3) + HomeKit (10) + CoreML (8)
+   - Reolink cameras: Rebroadcast (2) + WebRTC (7) + Snapshot (3) + HomeKit (10) [native AI motion]
+6. **CoreML applied to RTSP cameras** via discovered two-step process:
+   - Enable `developerMode` on Video Analysis Plugin (9) — unlocks `canMixin` for ObjectDetection devices
+   - Apply VA (9) as mixin to CoreML (8) → CoreML gains `MixinProvider` interface
+   - Apply CoreML (8) as mixin to each RTSP camera → cameras gain `ObjectDetector` interface
+
+### Key Technical Discovery
+
+The Video Analysis Plugin (device 9) does NOT directly mixin cameras. Its architecture:
+- `canMixin` on device 9 only accepts `ObjectDetection` devices (with `developerMode` or `ObjectDetectionGenerator`)
+- When applied to CoreML (8), its `getMixin` creates an `I` instance with `canMixin` for Camera/Doorbell type
+- CoreML then gains `MixinProvider` interface and can be applied to cameras
+- Cameras receive `ObjectDetector` (+ `MotionSensor` only if model has "motion" class — CoreML object detection doesn't)
+
+### Device IDs (current install)
+
+| Device | ID | Plugin |
+|--------|----|--------|
+| RTSP Camera Plugin | 1 | @scrypted/rtsp |
+| Rebroadcast | 2 | @scrypted/prebuffer-mixin |
+| Snapshot | 3 | @scrypted/snapshot |
+| WebRTC | 7 | @scrypted/webrtc |
+| CoreML Object Detection | 8 | @scrypted/coreml |
+| Video Analysis Plugin | 9 | @scrypted/objectdetector |
+| HomeKit | 10 | @scrypted/homekit |
+| Reolink Native | 11 | @apocaliss92/scrypted-reolink-native |
+| Master Bathroom Camera 1 | 38 | |
+| Master Bathroom Camera 2 | 39 | |
+| Master Bedroom Camera 1 | 40 | |
+| Hallway Camera 1 | 41 | |
+| Hallway Camera 2 | 42 | |
+| Kitchen Camera 1 | 43 | |
+| Kitchen Camera 2 | 44 | |
+| Office Camera | 45 | |
+| Living Room Camera (Wyze) | 46 | |
+| Front Door Camera (Wyze) | 47 | |
+| Courtyard Doorbell (Reolink) | 48 | |
+| Garage Outside Doorbell (Reolink) | 53 | |
+| Backyard Doorbell (Reolink) | 59 | |
+| Garage Outside Camera (Reolink) | 64 | |
+
+### Remaining Manual Steps
+
+- [ ] Pair each camera in Home app (get PIN from Scrypted UI → camera → Extensions → HomeKit)
+- [ ] Remove Docker Scrypted and wyze-bridge containers once confirmed working
+- [ ] Verify CoreML motion triggers in Home app
+
+---
+
 ## Session Log: 2026-03-25 — Migrate Scrypted Docker → Native + CoreML for Wyze
 
 ### What Changed
@@ -435,8 +496,11 @@ The script uses `@scrypted/client` (bundled by npx scrypted) to connect via WebS
 
 ### After Running the Script
 
-Still required in the Scrypted UI (`https://192.168.5.87:10443`):
-1. **Hipcam + Wyze cameras**: add mixins → Rebroadcast, Snapshot, Video Analysis (CoreML), HomeKit
-2. **In Video Analysis mixin**: set Detection Model = CoreML
-3. **Reolink cameras**: add mixins → Rebroadcast, Snapshot, HomeKit
-4. **HomeKit bridge**: pair in Home app (scan QR code or enter PIN)
+The following is **now handled programmatically** (no UI required):
+1. ✅ All 14 cameras added with correct names
+2. ✅ RTSP cameras (38-47): Rebroadcast + WebRTC + Snapshot + HomeKit + CoreML (ObjectDetector) mixins
+3. ✅ Reolink cameras (48, 53, 59, 64): Rebroadcast + WebRTC + Snapshot + HomeKit + native AI motion
+4. ✅ CoreML enabled by: (a) enable `developerMode` on Video Analysis Plugin (9), (b) apply VA (9) as mixin to CoreML (8), (c) apply CoreML (8) as mixin to each RTSP camera
+
+Still required (manual, one-time):
+- **HomeKit bridge**: pair in Home app — open `https://192.168.5.87:10443`, go to each camera → Extensions → HomeKit, copy the pairing PIN, add accessory in Home app
