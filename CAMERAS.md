@@ -46,15 +46,16 @@ Camera Hardware
 
 ## Camera Inventory
 
-### Reolink Cameras (5 total)
+### Reolink Cameras (4 total)
 
-| Camera | Location | Type | IP |
-|--------|----------|------|----|
-| Courtyard Doorbell | Front courtyard | Reolink Doorbell | 192.168.5.x |
-| Garage Outside Doorbell | Garage exterior | Reolink Doorbell | 192.168.5.x |
-| Backyard Doorbell | Backyard | Reolink Doorbell | 192.168.5.x |
-| 4th Doorbell | TBD | Reolink Doorbell | 192.168.5.x |
-| Garage Outside Camera | Garage | Reolink PTZ | 192.168.5.x |
+| Camera | Location | Type | IP | Scrypted ID |
+|--------|----------|------|----|-------------|
+| Courtyard Doorbell | Front courtyard | Reolink Doorbell | 192.168.5.141 | 182 |
+| Garage Outside Doorbell | Garage exterior | Reolink Doorbell | 192.168.5.163 | 179 |
+| Backyard Doorbell | Backyard | Reolink Doorbell | 192.168.5.74 | 180 |
+| Garage Outside Camera | Garage | Reolink PTZ | 192.168.5.84 | 178 |
+
+**Credentials:** username `admin`, password `Egyptian1975`
 
 **HA Integration:** Native Reolink integration (Settings → Integrations → Reolink)
 - Provides: motion, person, vehicle, pet, visitor detection entities
@@ -65,22 +66,33 @@ Camera Hardware
 - Provides: HKSV recording, doorbell press notifications, two-way audio in Home app
 - Each doorbell is a standalone HomeKit accessory
 
+**HomeKit pairing PINs (standalone accessories):**
+
+| Camera | PIN |
+|--------|-----|
+| Garage Outside Camera | 916-43-845 |
+| Garage Outside Doorbell | 438-56-023 |
+| Backyard Doorbell | 446-65-337 |
+| Courtyard Doorbell | 496-82-756 |
+
 ---
 
 ### Generic ONVIF Cameras (8 total)
 
 Brand: GF-PH200 / Hipcam
 
-| Camera | Location | IP | ONVIF Port |
-|--------|----------|----|------------|
-| Master Bathroom Camera 1 | Master bathroom | 192.168.5.174 | 8080 |
-| Master Bathroom Camera 2 | Master bathroom | 192.168.5.x | 8080 |
-| Hallway Camera 1 | Hallway | 192.168.5.x | 8080 |
-| Hallway Camera 2 | Hallway | 192.168.5.x | 8080 |
-| Kitchen Camera 1 | Kitchen | 192.168.5.x | 8080 |
-| Kitchen Camera 2 | Kitchen | 192.168.5.x | 8080 |
-| Bedroom Camera | Bedroom | 192.168.5.x | 8080 |
-| Office Camera | Office | 192.168.5.x | 8080 |
+| Camera | Location | IP | ONVIF Port | Scrypted ID |
+|--------|----------|----|------------|-------------|
+| Master Bathroom Camera 1 | Master bathroom | 192.168.5.174 | 8080 | 166 |
+| Master Bathroom Camera 2 | Master bathroom | 192.168.5.142 | 8080 | 167 |
+| Hallway Camera 1 | Hallway | 192.168.5.245 | 8080 | 171 |
+| Hallway Camera 2 | Hallway | 192.168.5.248 | 8080 | 172 |
+| Kitchen Camera 1 | Kitchen | 192.168.5.18 | 8080 | 169 |
+| Kitchen Camera 2 | Kitchen | 192.168.5.53 | 8080 | 170 |
+| Master Bedroom Camera 1 | Master bedroom | 192.168.5.236 | 8080 | 173 |
+| Office Camera | Office | 192.168.5.55 | 8080 | 168 |
+
+**Credentials:** username `admin`, password `egypt1`
 
 **RTSP streams:**
 - Main: `/11` (e.g. `rtsp://admin:egypt1@192.168.5.174:554/11`)
@@ -97,7 +109,7 @@ master_bathroom_camera_1_sub: rtsp://admin:egypt1@192.168.5.174:554/12
 
 **Scrypted:** `@scrypted/onvif` plugin — connects directly to camera at port 8080
 - Provides native ONVIF motion events → HKSV trigger
-- Scrypted device IDs: 131–138
+- Scrypted device IDs: 166–173
 - All have Rebroadcast + Snapshot + HomeKit mixins
 - All set to standalone HomeKit accessory mode
 
@@ -110,14 +122,14 @@ master_bathroom_camera_1_sub: rtsp://admin:egypt1@192.168.5.174:554/12
 
 | Camera | PIN |
 |--------|-----|
-| Master Bathroom Camera 1 | 059-57-764 |
-| Master Bathroom Camera 2 | 396-72-581 |
-| Hallway Camera 1 | 707-08-583 |
-| Hallway Camera 2 | 940-18-519 |
-| Kitchen Camera 1 | 532-34-166 |
-| Kitchen Camera 2 | 819-11-691 |
-| Bedroom Camera | 241-31-893 |
-| Office Camera | 710-54-459 |
+| Master Bathroom Camera 1 | 076-54-566 |
+| Master Bathroom Camera 2 | 580-22-883 |
+| Hallway Camera 1 | 129-10-940 |
+| Hallway Camera 2 | 421-75-664 |
+| Kitchen Camera 1 | 011-22-419 |
+| Kitchen Camera 2 | 507-01-574 |
+| Master Bedroom Camera 1 | 818-40-773 |
+| Office Camera | 388-12-043 |
 
 ---
 
@@ -145,16 +157,17 @@ ptz:
 ```
 
 **Scrypted:** `@scrypted/rtsp` plugin — connects to go2rtc RTSP rebroadcast
-- Scrypted IDs: 110 (Living Room), 111 (Front Door)
-- Motion events: **none currently** — Wyze P2P protocol doesn't carry ONVIF events
-- HKSV will record but requires manual trigger or CoreML detection
+- Scrypted IDs: 174 (Living Room), 175 (Front Door)
+- Motion events: via MQTT (wyze-bridge publishes to `wyzebridge/<camera>/motion`)
+- MQTT virtual devices: Living Room Motion (186), Front Door Motion (187)
+- HKSV triggered by MQTT motion sensor
 
 **HomeKit pairing PINs:**
 
 | Camera | PIN |
 |--------|-----|
-| Living Room Camera | 507-30-554 |
-| Front Door Camera | 021-71-311 |
+| Living Room Camera | 778-23-725 |
+| Front Door Camera | 224-80-183 |
 
 ---
 
@@ -207,12 +220,17 @@ front_doorbell_sub: rtsp://192.168.5.91:554/live/stream
 - **Web UI:** `https://192.168.5.87:10443`
 - **Plugins installed:**
   - `@scrypted/onvif` — generic ONVIF cameras
-  - `@scrypted/rtsp` — Wyze + Eufy via go2rtc
+  - `@scrypted/rtsp` — Wyze via go2rtc
   - `@apocaliss92/scrypted-reolink-native` — Reolink doorbells + cameras
   - `@scrypted/homekit` — HomeKit bridge
-  - `@scrypted/coreml` — Apple Silicon YOLOv9 object detection (available but not active on RTSP cameras)
+  - `@scrypted/mqtt` — Wyze motion sensors (MQTT virtual devices)
+  - `@scrypted/coreml` — Apple Silicon YOLOv9 object detection
+  - `@scrypted/objectdetector` — Video Analysis Plugin
+  - `@scrypted/webrtc` — WebRTC support
   - `@scrypted/prebuffer-mixin` (Rebroadcast) — prebuffering for HKSV
   - `@scrypted/snapshot` — snapshot support
+
+**MQTT broker:** `192.168.5.182:1883`, username `snassar`
 
 ### Home Assistant
 
@@ -230,7 +248,7 @@ front_doorbell_sub: rtsp://192.168.5.91:554/live/stream
 |-------------|--------------|--------------|
 | Reolink | Reolink native plugin | ✅ Native events |
 | Generic ONVIF | ONVIF native events (port 8080) | ✅ ONVIF motion |
-| Wyze | None currently | ⚠️ CoreML only (if enabled) |
+| Wyze | MQTT via wyze-bridge (`wyzebridge/<cam>/motion`) | ✅ MQTT motion sensor |
 | Eufy | TBD | TBD |
 
 ---
