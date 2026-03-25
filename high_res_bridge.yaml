@@ -3,6 +3,51 @@ path: high_res_bridge
 icon: mdi:video-high-definition
 badges: []
 
+# Shared advanced-camera-card config — applied to every card via YAML anchor.
+# Changes from original fragment:
+#   - camera_entity removed (was pointing to a non-existent _unified entity)
+#   - reolink.media_resolution: high  (was low)
+#   - image.refresh_seconds: 5        (was 1 — too aggressive across 15 cameras)
+x-card-config: &card_config
+  dependencies:
+    all_cameras: false
+    cameras: []
+  triggers:
+    motion: false
+    occupancy: false
+    entities:
+      - events
+      - clips
+      - snapshots
+  engine: auto
+  frigate:
+    client_id: frigate
+  motioneye:
+    images:
+      directory_pattern: '%Y-%m-%d'
+      file_pattern: '%H-%M-%S'
+    movies:
+      directory_pattern: '%Y-%m-%d'
+      file_pattern: '%H-%M-%S'
+  reolink:
+    media_resolution: high
+  live_provider: webrtc-card
+  image:
+    mode: auto
+    refresh_seconds: 5
+  ptz:
+    r2c_delay_between_calls_seconds: 0.5
+    c2r_delay_between_calls_seconds: 0.2
+  proxy:
+    live: auto
+    media: auto
+    dynamic: true
+    ssl_verification: auto
+    ssl_ciphers: auto
+  always_error_if_entity_unavailable: false
+  webrtc_card:
+    ui: true
+
 cards:
   - type: entities
     title: Location
@@ -20,6 +65,7 @@ cards:
         state: "All"
     card:
       type: custom:advanced-camera-card
+      <<: *card_config
       live:
         display:
           mode: grid
@@ -27,78 +73,93 @@ cards:
       cameras:
         - camera_entity: camera.front_door_camera_main
           name: Front Door Camera
-          live_provider: webrtc-card
-          webrtc_card: { ui: true }
+          triggers:
+            entities:
+              - entity: binary_sensor.wyze_cam_front_door_camera_motion
 
         - camera_entity: camera.courtyard_doorbell_fluent
           name: Courtyard Doorbell
-          live_provider: webrtc-card
-          webrtc_card: { ui: true }
+          triggers:
+            entities:
+              - entity: binary_sensor.courtyard_doorbell_motion
 
         - camera_entity: camera.backyard_doorbell_fluent
           name: Backyard Doorbell
-          live_provider: webrtc-card
-          webrtc_card: { ui: true }
+          triggers:
+            entities:
+              - entity: binary_sensor.backyard_doorbell_motion
 
         - camera_entity: camera.garage_outside_doorbell_fluent
           name: Garage Doorbell
-          live_provider: webrtc-card
-          webrtc_card: { ui: true }
+          triggers:
+            entities:
+              - entity: binary_sensor.garage_outside_doorbell_motion
 
         - camera_entity: camera.garage_outside_camera_fluent
           name: Garage Outside Camera
-          live_provider: webrtc-card
-          webrtc_card: { ui: true }
+          triggers:
+            entities:
+              - entity: binary_sensor.garage_outside_camera_motion
 
         - camera_entity: camera.eufy_garage_camera_1_main
           name: Garage Camera (Interior)
-          live_provider: webrtc-card
-          webrtc_card: { ui: true }
+          triggers:
+            entities:
+              - entity: binary_sensor.eufy_garage_camera_motion
 
         - camera_entity: camera.kitchen_camera_1_main
           name: Kitchen Camera 1
-          live_provider: webrtc-card
-          webrtc_card: { ui: true }
+          triggers:
+            entities:
+              - entity: binary_sensor.kitchen_camera_1_motion
 
         - camera_entity: camera.kitchen_camera_2_main
           name: Kitchen Camera 2
-          live_provider: webrtc-card
-          webrtc_card: { ui: true }
+          triggers:
+            entities:
+              - entity: binary_sensor.kitchen_camera_2_motion
 
         - camera_entity: camera.living_room_camera_main
           name: Living Room Camera
-          live_provider: webrtc-card
-          webrtc_card: { ui: true }
+          triggers:
+            entities:
+              - entity: binary_sensor.wyze_cam_living_room_camera_motion
 
         - camera_entity: camera.hallway_camera_1_main
           name: Hallway Camera 1
-          live_provider: webrtc-card
-          webrtc_card: { ui: true }
+          triggers:
+            entities:
+              - entity: binary_sensor.hallway_camera_1_motion
 
         - camera_entity: camera.hallway_camera_2_main
           name: Hallway Camera 2
-          live_provider: webrtc-card
-          webrtc_card: { ui: true }
+          triggers:
+            entities:
+              - entity: binary_sensor.hallway_camera_2_motion
 
         - camera_entity: camera.master_bedroom_camera_1_main
           name: Master Bedroom Camera
-          live_provider: webrtc-card
-          webrtc_card: { ui: true }
+          triggers:
+            entities:
+              - entity: binary_sensor.master_bedroom_camera_motion
 
         - camera_entity: camera.master_bathroom_camera_1_main
           name: Master Bath Camera 1
-          live_provider: webrtc-card
-          webrtc_card: { ui: true }
+          triggers:
+            entities:
+              - entity: binary_sensor.master_bathroom_camera_1_motion
 
         - camera_entity: camera.master_bathroom_camera_2_main
           name: Master Bath Camera 2
-          live_provider: webrtc-card
-          webrtc_card: { ui: true }
+          triggers:
+            entities:
+              - entity: binary_sensor.master_bathroom_camera_2_motion
 
         - camera_entity: camera.office_camera_main
           name: Office
-          live_provider: webrtc-card
-          webrtc_card: { ui: true }
+          triggers:
+            entities:
+              - entity: binary_sensor.office_camera_motion
 
   # ==========================================================
   # DOORBELL / OUTSIDE
@@ -109,6 +170,7 @@ cards:
         state: "Doorbell/Outside"
     card:
       type: custom:advanced-camera-card
+      <<: *card_config
       live:
         display:
           mode: grid
@@ -116,28 +178,33 @@ cards:
       cameras:
         - camera_entity: camera.front_door_camera_main
           name: Front Door Camera
-          live_provider: webrtc-card
-          webrtc_card: { ui: true }
+          triggers:
+            entities:
+              - entity: binary_sensor.wyze_cam_front_door_camera_motion
 
         - camera_entity: camera.courtyard_doorbell_fluent
           name: Courtyard Doorbell
-          live_provider: webrtc-card
-          webrtc_card: { ui: true }
+          triggers:
+            entities:
+              - entity: binary_sensor.courtyard_doorbell_motion
 
         - camera_entity: camera.backyard_doorbell_fluent
           name: Backyard Doorbell
-          live_provider: webrtc-card
-          webrtc_card: { ui: true }
+          triggers:
+            entities:
+              - entity: binary_sensor.backyard_doorbell_motion
 
         - camera_entity: camera.garage_outside_doorbell_fluent
           name: Garage Doorbell
-          live_provider: webrtc-card
-          webrtc_card: { ui: true }
+          triggers:
+            entities:
+              - entity: binary_sensor.garage_outside_doorbell_motion
 
         - camera_entity: camera.garage_outside_camera_fluent
           name: Garage Outside Camera
-          live_provider: webrtc-card
-          webrtc_card: { ui: true }
+          triggers:
+            entities:
+              - entity: binary_sensor.garage_outside_camera_motion
 
   # ==========================================================
   # ENTRYWAY / FRONT
@@ -148,6 +215,7 @@ cards:
         state: "Entryway/Front"
     card:
       type: custom:advanced-camera-card
+      <<: *card_config
       live:
         display:
           mode: grid
@@ -155,8 +223,9 @@ cards:
       cameras:
         - camera_entity: camera.front_door_camera_main
           name: Front Door Camera
-          live_provider: webrtc-card
-          webrtc_card: { ui: true }
+          triggers:
+            entities:
+              - entity: binary_sensor.wyze_cam_front_door_camera_motion
 
   # ==========================================================
   # BACKYARD
@@ -167,6 +236,7 @@ cards:
         state: "Backyard"
     card:
       type: custom:advanced-camera-card
+      <<: *card_config
       live:
         display:
           mode: grid
@@ -174,13 +244,15 @@ cards:
       cameras:
         - camera_entity: camera.backyard_doorbell_fluent
           name: Backyard Doorbell
-          live_provider: webrtc-card
-          webrtc_card: { ui: true }
+          triggers:
+            entities:
+              - entity: binary_sensor.backyard_doorbell_motion
 
         - camera_entity: camera.garage_outside_camera_fluent
           name: Garage Outside Camera
-          live_provider: webrtc-card
-          webrtc_card: { ui: true }
+          triggers:
+            entities:
+              - entity: binary_sensor.garage_outside_camera_motion
 
   # ==========================================================
   # COURTYARD
@@ -191,6 +263,7 @@ cards:
         state: "Courtyard"
     card:
       type: custom:advanced-camera-card
+      <<: *card_config
       live:
         display:
           mode: grid
@@ -198,8 +271,9 @@ cards:
       cameras:
         - camera_entity: camera.courtyard_doorbell_fluent
           name: Courtyard Doorbell
-          live_provider: webrtc-card
-          webrtc_card: { ui: true }
+          triggers:
+            entities:
+              - entity: binary_sensor.courtyard_doorbell_motion
 
   # ==========================================================
   # GARAGE
@@ -210,6 +284,7 @@ cards:
         state: "Garage"
     card:
       type: custom:advanced-camera-card
+      <<: *card_config
       live:
         display:
           mode: grid
@@ -217,18 +292,21 @@ cards:
       cameras:
         - camera_entity: camera.garage_outside_doorbell_fluent
           name: Garage Doorbell
-          live_provider: webrtc-card
-          webrtc_card: { ui: true }
+          triggers:
+            entities:
+              - entity: binary_sensor.garage_outside_doorbell_motion
 
         - camera_entity: camera.garage_outside_camera_fluent
           name: Garage Outside Camera
-          live_provider: webrtc-card
-          webrtc_card: { ui: true }
+          triggers:
+            entities:
+              - entity: binary_sensor.garage_outside_camera_motion
 
         - camera_entity: camera.eufy_garage_camera_1_main
           name: Garage Camera (Interior)
-          live_provider: webrtc-card
-          webrtc_card: { ui: true }
+          triggers:
+            entities:
+              - entity: binary_sensor.eufy_garage_camera_motion
 
   # ==========================================================
   # KITCHEN
@@ -239,6 +317,7 @@ cards:
         state: "Kitchen"
     card:
       type: custom:advanced-camera-card
+      <<: *card_config
       live:
         display:
           mode: grid
@@ -246,13 +325,15 @@ cards:
       cameras:
         - camera_entity: camera.kitchen_camera_1_main
           name: Kitchen Camera 1
-          live_provider: webrtc-card
-          webrtc_card: { ui: true }
+          triggers:
+            entities:
+              - entity: binary_sensor.kitchen_camera_1_motion
 
         - camera_entity: camera.kitchen_camera_2_main
           name: Kitchen Camera 2
-          live_provider: webrtc-card
-          webrtc_card: { ui: true }
+          triggers:
+            entities:
+              - entity: binary_sensor.kitchen_camera_2_motion
 
   # ==========================================================
   # LIVING ROOM
@@ -263,6 +344,7 @@ cards:
         state: "Living Room"
     card:
       type: custom:advanced-camera-card
+      <<: *card_config
       live:
         display:
           mode: grid
@@ -270,8 +352,9 @@ cards:
       cameras:
         - camera_entity: camera.living_room_camera_main
           name: Living Room Camera
-          live_provider: webrtc-card
-          webrtc_card: { ui: true }
+          triggers:
+            entities:
+              - entity: binary_sensor.wyze_cam_living_room_camera_motion
 
   # ==========================================================
   # HALLWAY
@@ -282,6 +365,7 @@ cards:
         state: "Hallway"
     card:
       type: custom:advanced-camera-card
+      <<: *card_config
       live:
         display:
           mode: grid
@@ -289,13 +373,15 @@ cards:
       cameras:
         - camera_entity: camera.hallway_camera_1_main
           name: Hallway Camera 1
-          live_provider: webrtc-card
-          webrtc_card: { ui: true }
+          triggers:
+            entities:
+              - entity: binary_sensor.hallway_camera_1_motion
 
         - camera_entity: camera.hallway_camera_2_main
           name: Hallway Camera 2
-          live_provider: webrtc-card
-          webrtc_card: { ui: true }
+          triggers:
+            entities:
+              - entity: binary_sensor.hallway_camera_2_motion
 
   # ==========================================================
   # OFFICE
@@ -306,6 +392,7 @@ cards:
         state: "Office"
     card:
       type: custom:advanced-camera-card
+      <<: *card_config
       live:
         display:
           mode: grid
@@ -313,8 +400,9 @@ cards:
       cameras:
         - camera_entity: camera.office_camera_main
           name: Office Camera
-          live_provider: webrtc-card
-          webrtc_card: { ui: true }
+          triggers:
+            entities:
+              - entity: binary_sensor.office_camera_motion
 
   # ==========================================================
   # MASTER SUITE
@@ -325,6 +413,7 @@ cards:
         state: "Massa"
     card:
       type: custom:advanced-camera-card
+      <<: *card_config
       live:
         display:
           mode: grid
@@ -332,15 +421,18 @@ cards:
       cameras:
         - camera_entity: camera.master_bedroom_camera_1_main
           name: Master Bedroom Camera
-          live_provider: webrtc-card
-          webrtc_card: { ui: true }
+          triggers:
+            entities:
+              - entity: binary_sensor.master_bedroom_camera_motion
 
         - camera_entity: camera.master_bathroom_camera_1_main
           name: Master Bath Camera 1
-          live_provider: webrtc-card
-          webrtc_card: { ui: true }
+          triggers:
+            entities:
+              - entity: binary_sensor.master_bathroom_camera_1_motion
 
         - camera_entity: camera.master_bathroom_camera_2_main
           name: Master Bath Camera 2
-          live_provider: webrtc-card
-          webrtc_card: { ui: true }
+          triggers:
+            entities:
+              - entity: binary_sensor.master_bathroom_camera_2_motion
