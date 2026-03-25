@@ -71,7 +71,7 @@ Camera Hardware
 | Backyard Doorbell | Backyard | Reolink Doorbell | 192.168.5.74 | 180 |
 | Garage Outside Camera | Garage | Reolink PTZ | 192.168.5.84 | 178 |
 
-**Credentials:** username `admin`, password `Egyptian1975`
+**Credentials:** username `admin` (see local credentials store)
 
 **HA:** Native Reolink integration — connects directly to camera via camera URL + HTTP API
 - Provides: camera entity (live stream), motion, person/vehicle/pet/visitor detection, PTZ control, siren, floodlight
@@ -106,18 +106,18 @@ Brand: GF-PH200 / Hipcam (cheap ONVIF knockoff cameras)
 | Master Bedroom Camera 1 | Master bedroom | 192.168.5.236 | 8080 | 173 |
 | Office Camera | Office | 192.168.5.55 | 8080 | 168 |
 
-**Credentials:** username `admin`, password `egypt1`
+**Credentials:** username `admin` (see local credentials store)
 
 **RTSP streams:**
-- Main: `/11` (e.g. `rtsp://admin:egypt1@192.168.5.174:554/11`)
-- Sub: `/12` (e.g. `rtsp://admin:egypt1@192.168.5.174:554/12`)
+- Main: `/11` (e.g. `rtsp://admin:<password>@192.168.5.174:554/11`)
+- Sub: `/12` (e.g. `rtsp://admin:<password>@192.168.5.174:554/12`)
 
 **go2rtc config (each camera):**
 ```yaml
 master_bathroom_camera_1_main:
-  - onvif://admin:egypt1@192.168.5.174:8080
+  - onvif://admin:<password>@192.168.5.174:8080
   - ffmpeg:master_bathroom_camera_1_main#audio=opus
-master_bathroom_camera_1_sub: rtsp://admin:egypt1@192.168.5.174:554/12
+master_bathroom_camera_1_sub: rtsp://admin:<password>@192.168.5.174:554/12
 ```
 > Note: `ffmpeg:#audio=opus` transcodes from PCMA/G.711 A-law (garbled in HomeKit) to Opus.
 
@@ -379,3 +379,64 @@ Wyze Camera → go2rtc (wyze:// P2P) → RTSP rtsp://192.168.5.87:8554/<cam>_mai
 - **ONVIF camera IPs**: `/Users/sn/docker/go2rtc.yaml` on Mac Mini
 - **Reolink camera IPs**: HA Reolink integration (192.168.5.182)
 - **Wyze RTSP URLs**: `rtsp://192.168.5.87:8554/living_room_camera_main`, `rtsp://192.168.5.87:8554/front_door_camera_main`
+
+---
+
+## Programmatic Setup — Scrypted API Access
+
+All 14 cameras can be added to a fresh Scrypted install programmatically using the setup script in this repo (`scrypted_setup.mjs`). No manual UI clicks required.
+
+### How It Works
+
+Scrypted exposes an HTTP API at `https://127.0.0.1:10443` and a WebSocket API used by its JavaScript SDK (`@scrypted/client`). The SDK is bundled by `npx scrypted` into `~/.npm/_npx/`.
+
+### Step-by-Step (fresh Scrypted install)
+
+**1. Create admin account** (first-time only — no account exists yet):
+```bash
+curl -sk -X POST https://localhost:10443/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"snassar","password":"<password>","change_password":"<password>"}'
+# → returns {"token":"<short-api-token>", ...}
+```
+
+**2. Authenticate the Scrypted CLI** (write token so `npx scrypted install` works without TTY):
+```bash
+# On Mac Mini, write to ~/.scrypted/login.json:
+echo '{"127.0.0.1:10443":{"username":"snassar","token":"<token-from-step-1>"}}' > ~/.scrypted/login.json
+```
+
+**3. Install all plugins** (can run in parallel):
+```bash
+PATH=/opt/homebrew/opt/node@20/bin:$PATH
+npx scrypted install @scrypted/rtsp 127.0.0.1
+npx scrypted install @apocaliss92/scrypted-reolink-native 127.0.0.1
+npx scrypted install @scrypted/homekit 127.0.0.1
+npx scrypted install @scrypted/coreml 127.0.0.1
+npx scrypted install @scrypted/objectdetector 127.0.0.1
+npx scrypted install @scrypted/webrtc 127.0.0.1
+npx scrypted install @scrypted/prebuffer-mixin 127.0.0.1
+npx scrypted install @scrypted/snapshot 127.0.0.1
+```
+
+**4. Add all 14 cameras** using the setup script:
+```bash
+# From local machine:
+scp scrypted_setup.mjs sn@192.168.5.87:/tmp/
+ssh sn@192.168.5.87 'PATH=/opt/homebrew/opt/node@20/bin:$PATH node /tmp/scrypted_setup.mjs'
+```
+
+The script uses `@scrypted/client` (bundled by npx scrypted) to connect via WebSocket and call `createDevice()` on the RTSP and Reolink Native plugin devices.
+
+**Client SDK path** (may change when `npx scrypted` updates — find with `find ~/.npm/_npx -name "index.js" -path "*/client/src/*"`):
+```
+~/.npm/_npx/<hash>/node_modules/@scrypted/client/dist/packages/client/src/index.js
+```
+
+### After Running the Script
+
+Still required in the Scrypted UI (`https://192.168.5.87:10443`):
+1. **Hipcam + Wyze cameras**: add mixins → Rebroadcast, Snapshot, Video Analysis (CoreML), HomeKit
+2. **In Video Analysis mixin**: set Detection Model = CoreML
+3. **Reolink cameras**: add mixins → Rebroadcast, Snapshot, HomeKit
+4. **HomeKit bridge**: pair in Home app (scan QR code or enter PIN)
