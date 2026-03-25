@@ -3,12 +3,16 @@
 ## Overview
 
 Cameras are split across two systems:
-- **Home Assistant (HA)** — motion/event recording, automations, entity sensors
-- **Scrypted** — HomeKit Secure Video (HKSV), HomeKit streaming, hardware transcoding
+- **Home Assistant (HA)** — motion/event recording, automations, entity sensors, native Reolink integration
+- **Scrypted** — HomeKit Secure Video (HKSV), HomeKit streaming, hardware transcoding, CoreML motion (Wyze + ONVIF)
 
-**go2rtc** runs natively on the Mac Mini M1 (`192.168.5.87`) as a stream rebroadcaster and protocol bridge between cameras and HA/Scrypted.
+**go2rtc** runs natively on the Mac Mini M1 (`192.168.5.87`) as a stream rebroadcaster and protocol bridge. It handles Wyze P2P (`wyze://`), ONVIF, and RTSP sources and rebroadcasts them as RTSP for HA and Scrypted.
 
-**wyze-bridge** and **Scrypted** both run as Docker containers on the Mac Mini M1. It handles the Wyze P2P protocol and publishes motion events to MQTT — it is not in the video path (go2rtc handles Wyze video natively via `wyze://`).
+**Scrypted** runs natively on the Mac Mini M1 as a LaunchAgent. It handles HomeKit Secure Video and uses CoreML (M1 Neural Engine) for Wyze motion detection on go2rtc RTSP streams.
+
+**wyze-bridge is not used.** go2rtc handles Wyze P2P natively via `wyze://` and rebroadcasts as RTSP to both HA and Scrypted.
+
+**@apocaliss92/scrypted-reolink-native** connects directly to Reolink cameras (not via go2rtc) for HKSV and HomeKit streaming.
 
 ---
 
@@ -17,30 +21,34 @@ Cameras are split across two systems:
 ```
 Camera Hardware
       │
-      ├─── Reolink cameras/doorbells ──────────────┬─► HA (native Reolink HTTP API)
+      ├─── Reolink cameras/doorbells ──────────────┬─► HA (native Reolink integration, direct)
+      │                                             │         camera URL + motion/person/vehicle/PTZ
       │                                             │
-      │                                             └─► Scrypted (Reolink Native Plugin)
+      │                                             └─► Scrypted (Reolink Native Plugin, direct)
       │                                                       │
       │                                                       └─► HomeKit (HKSV + doorbell + 2-way audio)
       │
-      ├─── Generic ONVIF cameras (port 8080) ──────┬─► go2rtc (ONVIF → RTSP rebroadcast)
-      │                                             │         │
-      │                                             │         └─► HA (RTSP stream for dashboard/recorder)
-      │                                             │
-      │                                             └─► Scrypted (ONVIF Plugin, direct to camera)
+      ├─── Hipcam Knockoff cameras (port 8080) ──────► go2rtc (single producer — ONVIF → RTSP + Opus)
       │                                                       │
-      │                                                       └─► HomeKit (HKSV + motion via ONVIF events)
+      │                                                       ├─► HA (WebRTC/RTSP for dashboard)
+      │                                                       │
+      │                                                       └─► Scrypted (RTSP Plugin)
+      │                                                                 │
+      │                                                                 ├─► CoreML (M1 Neural Engine)
+      │                                                                 │         motion detection
+      │                                                                 │
+      │                                                                 └─► HomeKit (HKSV + motion)
       │
-      ├─── Wyze cameras ───────────────────────────┬─► go2rtc (wyze:// → RTSP rebroadcast)
-      │                                             │         │
-      │                                             │         └─► Scrypted (RTSP Plugin)
-      │                                             │                   │
-      │                                             │                   └─► HomeKit (HKSV)
-      │                                             │
-      │                                             └─► wyze-bridge (Docker, P2P → MQTT motion)
+      ├─── Wyze cameras ───────────────────────────► go2rtc (wyze:// P2P → RTSP rebroadcast)
       │                                                       │
-      │                                                       └─► MQTT broker → Scrypted virtual
-      │                                                           motion sensor → HKSV trigger
+      │                                                       ├─► HA (RTSP stream for dashboard)
+      │                                                       │
+      │                                                       └─► Scrypted (RTSP Plugin)
+      │                                                                 │
+      │                                                                 ├─► CoreML (M1 Neural Engine)
+      │                                                                 │         motion detection
+      │                                                                 │
+      │                                                                 └─► HomeKit (HKSV + motion)
       │
       ├─── Eufy garage camera ─────────────────────► go2rtc (RTSP source)
       │         [Scrypted/HomeKit: pending]                   │
@@ -65,29 +73,27 @@ Camera Hardware
 
 **Credentials:** username `admin`, password `Egyptian1975`
 
-**HA Integration:** Native Reolink integration (Settings → Integrations → Reolink)
-- Provides: motion, person, vehicle, pet, visitor detection entities
-- Provides: PTZ control, siren, floodlight entities
-- No go2rtc needed — HA pulls RTSP directly from cameras
+**HA:** Native Reolink integration — connects directly to camera via camera URL + HTTP API
+- Provides: camera entity (live stream), motion, person/vehicle/pet/visitor detection, PTZ control, siren, floodlight
 
-**Scrypted:** `@apocaliss92/scrypted-reolink-native` plugin
+**Scrypted:** `@apocaliss92/scrypted-reolink-native` plugin — connects **directly to camera** (not via go2rtc)
 - Provides: HKSV recording, doorbell press notifications, two-way audio in Home app
-- Each doorbell is a standalone HomeKit accessory
+- Each camera/doorbell is a standalone HomeKit accessory
 
 **HomeKit pairing PINs (standalone accessories):**
 
 | Camera | PIN |
 |--------|-----|
-| Garage Outside Camera | 916-43-845 |
-| Garage Outside Doorbell | 438-56-023 |
-| Backyard Doorbell | 446-65-337 |
-| Courtyard Doorbell | 496-82-756 |
+| Garage Outside Camera | TBD (fresh install 2026-03-25) |
+| Garage Outside Doorbell | TBD |
+| Backyard Doorbell | TBD |
+| Courtyard Doorbell | TBD |
 
 ---
 
-### Generic ONVIF Cameras (8 total)
+### Hipcam Knockoff Cameras (8 total)
 
-Brand: GF-PH200 / Hipcam
+Brand: GF-PH200 / Hipcam (cheap ONVIF knockoff cameras)
 
 | Camera | Location | IP | ONVIF Port | Scrypted ID |
 |--------|----------|----|------------|-------------|
@@ -115,29 +121,30 @@ master_bathroom_camera_1_sub: rtsp://admin:egypt1@192.168.5.174:554/12
 ```
 > Note: `ffmpeg:#audio=opus` transcodes from PCMA/G.711 A-law (garbled in HomeKit) to Opus.
 
-**Scrypted:** `@scrypted/onvif` plugin — connects directly to camera at port 8080
-- Provides native ONVIF motion events → HKSV trigger
-- Scrypted device IDs: 166–173
+**Scrypted:** `@scrypted/rtsp` plugin — connects to go2rtc RTSP rebroadcast (single producer)
+- RTSP URLs: `rtsp://192.168.5.87:8554/<camera>_main` (Opus audio from go2rtc transcode)
+- Motion: CoreML object detection (M1 Neural Engine) via `@scrypted/coreml` + `@scrypted/objectdetector` mixins
+- go2rtc is single ONVIF connection to camera — protects cheap cameras from multiple connections
+- Scrypted device IDs: TBD (fresh install 2026-03-25)
 - All have Rebroadcast + Snapshot + HomeKit mixins
 - All set to standalone HomeKit accessory mode
 
 **Known limitations:**
 - Two-way audio is disabled by manufacturer (firmware-locked, paid upgrade)
 - ONVIF implementation is partial (hikwsd/hikxsd namespace variant)
-- `@scrypted/objectdetector` (Video Analysis Plugin) is NOT compatible — use ONVIF native motion events instead
 
 **HomeKit pairing PINs (standalone accessories):**
 
 | Camera | PIN |
 |--------|-----|
-| Master Bathroom Camera 1 | 076-54-566 |
-| Master Bathroom Camera 2 | 580-22-883 |
-| Hallway Camera 1 | 129-10-940 |
-| Hallway Camera 2 | 421-75-664 |
-| Kitchen Camera 1 | 011-22-419 |
-| Kitchen Camera 2 | 507-01-574 |
-| Master Bedroom Camera 1 | 818-40-773 |
-| Office Camera | 388-12-043 |
+| Master Bathroom Camera 1 | TBD (fresh install 2026-03-25) |
+| Master Bathroom Camera 2 | TBD |
+| Hallway Camera 1 | TBD |
+| Hallway Camera 2 | TBD |
+| Kitchen Camera 1 | TBD |
+| Kitchen Camera 2 | TBD |
+| Master Bedroom Camera 1 | TBD |
+| Office Camera | TBD |
 
 ---
 
@@ -165,17 +172,17 @@ ptz:
 ```
 
 **Scrypted:** `@scrypted/rtsp` plugin — connects to go2rtc RTSP rebroadcast
-- Scrypted IDs: 174 (Living Room), 175 (Front Door)
-- Motion events: via MQTT (wyze-bridge publishes to `wyzebridge/<camera>/motion`)
-- MQTT virtual devices: Living Room Motion (186), Front Door Motion (187)
-- HKSV triggered by MQTT motion sensor
+- RTSP URLs: `rtsp://192.168.5.87:8554/living_room_camera_main`, `rtsp://192.168.5.87:8554/front_door_camera_main`
+- Scrypted IDs: TBD (fresh install 2026-03-25)
+- Motion events: CoreML object detection (M1 Neural Engine) via `@scrypted/coreml` + `@scrypted/objectdetector` mixins
+- HKSV triggered by CoreML motion — no MQTT, no wyze-bridge required
 
 **HomeKit pairing PINs:**
 
 | Camera | PIN |
 |--------|-----|
-| Living Room Camera | 778-23-725 |
-| Front Door Camera | 224-80-183 |
+| Living Room Camera | TBD (fresh install 2026-03-25) |
+| Front Door Camera | TBD |
 
 ---
 
@@ -224,29 +231,31 @@ front_doorbell_sub: rtsp://192.168.5.91:554/live/stream
 ### Scrypted
 
 - **Host:** Mac Mini M1 (`192.168.5.87`)
-- **Running as:** Docker container
+- **Running as:** Native macOS LaunchAgent (`~/Library/LaunchAgents/com.scrypted.plist`)
+- **Node.js:** `/opt/homebrew/opt/node@20/bin/node` (v20 LTS)
+- **Install dir:** `~/.scrypted/`
+- **Volume:** `~/.scrypted/volume/`
 - **Web UI:** `https://192.168.5.87:10443`
+- **Logs:** `/tmp/scrypted.log`
+- **Restart:** `launchctl stop com.scrypted` (launchd auto-restarts due to KeepAlive)
 - **Plugins installed:**
-  - `@scrypted/onvif` — generic ONVIF cameras
-  - `@scrypted/rtsp` — Wyze via go2rtc
-  - `@apocaliss92/scrypted-reolink-native` — Reolink doorbells + cameras
+  - `@scrypted/rtsp` — ONVIF cameras (via go2rtc RTSP) + Wyze cameras (via go2rtc RTSP)
+  - `@apocaliss92/scrypted-reolink-native` — Reolink cameras/doorbells (direct to camera, not via go2rtc)
   - `@scrypted/homekit` — HomeKit bridge
-  - `@scrypted/mqtt` — Wyze motion sensors (MQTT virtual devices)
-  - `@scrypted/coreml` — Apple Silicon YOLOv9 object detection
-  - `@scrypted/objectdetector` — Video Analysis Plugin
+  - `@scrypted/coreml` — Apple Silicon CoreML / M1 Neural Engine object detection (Wyze + ONVIF motion)
+  - `@scrypted/objectdetector` — Video Analysis Plugin (paired with CoreML for Wyze + ONVIF)
   - `@scrypted/webrtc` — WebRTC support
   - `@scrypted/prebuffer-mixin` (Rebroadcast) — prebuffering for HKSV
   - `@scrypted/snapshot` — snapshot support
 
-**MQTT broker:** `192.168.5.182:1883`, username `snassar`
+> **Not installed:** `@scrypted/mqtt` (not needed — Wyze motion handled by CoreML, not MQTT)
 
 ### wyze-bridge
 
-- **Host:** Mac Mini M1 (`192.168.5.87`)
-- **Running as:** Docker container
-- **Purpose:** Wyze motion events only — connects to Wyze cameras via P2P and publishes motion to MQTT topic `wyzebridge/<camera_name>/motion`
-- **Not used for video** — go2rtc handles Wyze video streams natively via `wyze://` protocol
-- **MQTT topics:** `wyzebridge/living_room_camera/motion`, `wyzebridge/front_door_camera/motion`
+**Not used.** Docker container exists but is stopped and not started at boot.
+- go2rtc handles all Wyze video via `wyze://` P2P protocol natively
+- Scrypted CoreML handles Wyze motion detection
+- wyze-bridge Docker image retained for reference only
 
 ### Home Assistant
 
@@ -260,28 +269,30 @@ front_doorbell_sub: rtsp://192.168.5.91:554/live/stream
 
 ## Motion Detection Strategy
 
-| Camera Type | Motion Source | HKSV Trigger |
-|-------------|--------------|--------------|
-| Reolink | Reolink native plugin | ✅ Native events |
-| Generic ONVIF | ONVIF native events (port 8080) | ✅ ONVIF motion |
-| Wyze | MQTT via wyze-bridge (`wyzebridge/<cam>/motion`) | ✅ MQTT motion sensor |
-| Eufy | TBD | TBD |
+| Camera Type | Motion Source | HomeKit / HKSV | M1 GPU |
+|-------------|--------------|----------------|--------|
+| Reolink | HA native Reolink integration (person/vehicle/pet/visitor) | ✅ Scrypted reolink-native → HKSV | ✅ VideoToolbox — HKSV encode |
+| Hipcam Knockoff | CoreML via go2rtc RTSP (M1 Neural Engine — dedicated, no CPU competition) | ✅ Scrypted RTSP + CoreML → HKSV | ✅ Neural Engine (motion) + VideoToolbox (HKSV encode) — parallel hardware |
+| Wyze | CoreML via go2rtc RTSP (M1 Neural Engine — dedicated, no CPU competition) | ✅ Scrypted CoreML → HKSV | ✅ Neural Engine (motion) + VideoToolbox (HKSV encode) — parallel hardware |
+| Eufy | TBD | TBD | TBD |
 
 ---
 
 ## Key Design Decisions
 
-1. **Reolink not in go2rtc** — HA uses native Reolink HTTP API directly; go2rtc is unnecessary overhead for Reolink cameras.
+1. **Reolink: both HA and Scrypted connect directly (no go2rtc)** — HA native Reolink integration and Scrypted reolink-native plugin both connect directly to cameras. Reolink cameras output AAC audio natively — no audio transcoding needed, so go2rtc is not required. M1 VideoToolbox used by Scrypted for HKSV encoding same as all cameras.
 
-2. **Generic cameras: dual connection** — go2rtc holds one ONVIF connection for HA; Scrypted holds a separate direct ONVIF connection for motion events + video. Slightly redundant but lightweight.
+2. **Hipcam Knockoff: go2rtc as single producer** — go2rtc makes one ONVIF connection per camera, transcodes PCMA → Opus (CPU, via ffmpeg), rebroadcasts RTSP to both HA (WebRTC) and Scrypted (RTSP plugin). One connection protects cheap cameras from multiple simultaneous connections. go2rtc on M1 handles all 8 cameras efficiently.
 
-3. **ONVIF plugin over RTSP plugin in Scrypted** — Required for motion events. `@scrypted/objectdetector` (Video Analysis Plugin) is incompatible with RTSP-via-go2rtc cameras.
+3. **CoreML for ONVIF motion (preferred over native ONVIF events)** — Scrypted uses RTSP plugin (via go2rtc) + CoreML for motion. Three reasons: (1) **Quality** — CoreML detects person/vehicle/animal vs cameras' basic pixel-change (high false positives). (2) **Dedicated hardware** — CoreML runs on the M1 Neural Engine, a separate 16-core silicon block that does not compete with CPU (go2rtc, audio transcode) or VideoToolbox (HKSV encode) — it runs in parallel at no cost to other workloads. (3) **Less CPU** — native ONVIF motion polling is HTTP/SOAP on CPU cores, competing with go2rtc and audio transcoding. Neural Engine sits idle without CoreML — using it here is free performance.
 
-4. **Opus audio transcoding in go2rtc** — Generic cameras output PCMA/G.711 A-law audio which causes garbled playback in HomeKit. The `ffmpeg:#audio=opus` pipeline in go2rtc transcodes before Scrypted receives the stream.
+4. **CoreML for Wyze motion** — Wyze cameras have no accessible native motion event API. go2rtc pulls video via `wyze://` P2P and rebroadcasts as RTSP. Scrypted pulls those RTSP streams and runs CoreML (M1 Neural Engine) for person/vehicle/animal detection. Eliminates wyze-bridge entirely.
 
-5. **Cameras NOT in HA HomeKit bridge** — Scrypted provides better HKSV support, hardware transcoding (Apple Silicon), and prebuffering. HA HomeKit bridge is used for non-camera entities only (locks, lights, sensors, thermostats).
+5. **Opus audio transcoding in go2rtc (ONVIF + Wyze)** — ONVIF cameras output PCMA/G.711 A-law; Wyze also transcoded. go2rtc transcodes once via `ffmpeg:#audio=opus` — both HA and Scrypted receive Opus. No duplicate transcoding.
 
-6. **Standalone HomeKit accessories** — Each Scrypted camera is configured with `homekit:standalone=true` and paired individually in Home app (not through HA bridge).
+6. **Cameras NOT in HA HomeKit bridge** — Scrypted provides better HKSV support, hardware transcoding (Apple Silicon), and prebuffering. HA HomeKit bridge is used for non-camera entities only (locks, lights, sensors, thermostats).
+
+7. **Standalone HomeKit accessories** — Each Scrypted camera is configured with `homekit:standalone=true` and paired individually in Home app (not through HA bridge).
 
 ---
 
@@ -322,11 +333,49 @@ Scrypted's LevelDB database was corrupted after a forced process kill (`launchct
 - **RTSP camera URL setting key** is `urls` (plural), not `url`.
 - **ONVIF `createDevice`** needs `{ip, httpPort:"8080", username, password}` and benefits from `skipValidate:true` to avoid per-camera timeout.
 - **HomeKit PINs** are only available after `homekit:standalone=true` is set and the mixin initializes (~30s).
-- **Wyze motion** flows: wyze-bridge Docker → MQTT topic `wyzebridge/<camera>/motion` → Scrypted MQTT virtual device → HKSV trigger.
+- **Wyze motion (superseded)** — previously used wyze-bridge MQTT. Now handled by CoreML in Scrypted (see 2026-03-25 session).
 
 ### Recovery Sources Used
 
 - **ONVIF camera IPs**: `/Users/sn/docker/go2rtc.yaml` on Mac Mini
 - **Reolink camera IPs**: HA Reolink integration API (`192.168.5.182`)
 - **Wyze go2rtc streams**: `/Users/sn/docker/go2rtc.yaml`
-- **MQTT broker**: `192.168.5.182:1883`, username `snassar`
+
+---
+
+## Session Log: 2026-03-25 — Migrate Scrypted Docker → Native + CoreML for Wyze
+
+### What Changed
+
+1. **Scrypted migrated from Docker to native macOS LaunchAgent** — enables M1 Neural Engine access for CoreML (not available inside Docker on macOS).
+
+2. **wyze-bridge Docker container eliminated** — was only used for Wyze motion events via MQTT. Replaced by CoreML in Scrypted.
+
+3. **Wyze motion detection now uses CoreML** — Scrypted pulls Wyze RTSP streams from go2rtc and runs `@scrypted/coreml` + `@scrypted/objectdetector` for person/vehicle/animal detection directly on M1 Neural Engine.
+
+4. **`@scrypted/mqtt` plugin removed** — no longer needed.
+
+### Wyze Motion Flow (new)
+
+```
+Wyze Camera → go2rtc (wyze:// P2P) → RTSP rtsp://192.168.5.87:8554/<cam>_main
+                                              │
+                                        Scrypted RTSP Plugin
+                                              │
+                                        CoreML + ObjectDetector mixin
+                                        (M1 Neural Engine — person/vehicle/animal)
+                                              │
+                                        HomeKit motion event → HKSV trigger
+```
+
+### Migration Notes
+
+- **LevelDB incompatibility**: Docker Scrypted (Linux arm64) LevelDB database is not compatible with native macOS arm64 LevelDB. Fresh DB required — all devices and plugins must be re-added via Scrypted UI.
+- **Plugin binaries**: Linux arm64 plugin binaries cannot run on macOS native. Scrypted reinstalls all plugins for macOS on first run from fresh volume.
+- **Scrypted install command**: `npx -y scrypted@latest install-server` (run with Node 20 from Homebrew: `/opt/homebrew/opt/node@20/bin/npx`)
+
+### Recovery Sources (same as before)
+
+- **ONVIF camera IPs**: `/Users/sn/docker/go2rtc.yaml` on Mac Mini
+- **Reolink camera IPs**: HA Reolink integration (192.168.5.182)
+- **Wyze RTSP URLs**: `rtsp://192.168.5.87:8554/living_room_camera_main`, `rtsp://192.168.5.87:8554/front_door_camera_main`
