@@ -86,11 +86,11 @@ async function main() {
   for (const cam of RTSP_CAMERAS) {
     try {
       const id = await rtspPlugin.createDevice({ name: cam.name, url: cam.url });
-      // createDevice does not persist the URL into settings — must set explicitly
+      // createDevice does not persist the URL into settings — must set explicitly as array
       const device = sm.getDeviceById(id);
-      await device.putSetting("urls", cam.url);
+      await device.putSetting("urls", [cam.url]);
+      await sleep(10000); // plugin needs ~10s to process each URL change
       console.log(`  ✓ ${cam.name}  (id=${id})`);
-      await sleep(500);
     } catch (e) {
       console.log(`  ✗ ${cam.name}  — ${e.message}`);
     }
