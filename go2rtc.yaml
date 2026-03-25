@@ -1,0 +1,158 @@
+# go2rtc configuration — Mac Mini M1 (192.168.5.87)
+# Live file location: /Users/sn/docker/go2rtc.yaml
+# Last updated: 2026-03-25
+#
+# go2rtc runs as root LaunchDaemon: /Library/LaunchDaemons/com.go2rtc.plist
+# PATH includes /opt/homebrew/bin (required for ffmpeg: sources)
+# Web UI / API: http://192.168.5.87:1984
+# RTSP rebroadcast: rtsp://192.168.5.87:8554/<stream_name>
+#
+# Source types used:
+#   onvif://    — ONVIF discovery → RTSP (cameras with working ONVIF implementation)
+#   ffmpeg:rtsp://...#video=copy#audio=copy
+#               — Direct RTSP via ffmpeg (fixes bad SDP from camera firmware bugs,
+#                 and handles cameras where audio/video track order is reversed)
+#   wyze://     — Wyze P2P direct connection
+#   rtsp://     — Direct RTSP (sub streams, August doorbell, Eufy)
+#
+# Audio transcoding: ffmpeg:<stream>#audio=opus
+#   All Hipcam and Wyze cameras output PCMA/G.711 or PCMU — go2rtc transcodes
+#   once to Opus for HA and Scrypted. No duplicate transcoding downstream.
+#
+# Keepalive: ~/go2rtc-keepalive.sh (LaunchAgent) maintains persistent ffmpeg
+#   connections to all 10 Hipcam + Wyze streams so cameras stay awake.
+
+log:
+  format: color
+  level: info
+  output: stdout
+  time: UNIXMS
+
+rtsp:
+  listen: :8554
+  default_query: video&audio&transport=tcp
+  fix_timestamps: true
+  drop_corrupted: true
+  queue_size: 128
+
+webrtc:
+  listen: :8555/tcp
+  ice_servers:
+    - urls:
+        - stun:stun.l.google.com:19302
+  allow_local_candidates: true
+
+ffmpeg:
+  bin: /opt/homebrew/bin/ffmpeg
+  h264_annexb: true
+
+api:
+  force_profile_level_id: 42001f
+  snapshot:
+    enabled: true
+
+probe:
+  timeout: 3s
+  limit: 4
+
+onvif:
+  port: ":8000"
+  probe: false
+
+streams:
+
+  # -------------------------------------------------------
+  # Hipcam GF-PH200 cameras (8 total)
+  # Credentials: admin / egypt1
+  # RTSP: main stream /11, sub stream /12, ONVIF port 8080
+  # -------------------------------------------------------
+
+  # Master Bathroom 1 & 2 — ffmpeg source (firmware SDP bug: profile-level-id=000001)
+  # ffmpeg reads actual SPS from bitstream → regenerates correct SDP (420032 = Baseline L5.0)
+  master_bathroom_camera_1_main:
+  - ffmpeg:rtsp://admin:egypt1@192.168.5.174:554/11#video=copy#audio=copy
+  - ffmpeg:master_bathroom_camera_1_main#audio=opus
+  master_bathroom_camera_1_sub:  rtsp://admin:egypt1@192.168.5.174:554/12
+
+  master_bathroom_camera_2_main:
+  - ffmpeg:rtsp://admin:egypt1@192.168.5.142:554/11#video=copy#audio=copy
+  - ffmpeg:master_bathroom_camera_2_main#audio=opus
+  master_bathroom_camera_2_sub:  rtsp://admin:egypt1@192.168.5.142:554/12
+
+  # Hallway 1 & 2 — ffmpeg source (ONVIF was timing out intermittently)
+  hallway_camera_1_main:
+  - ffmpeg:rtsp://admin:egypt1@192.168.5.245:554/11#video=copy#audio=copy
+  - ffmpeg:hallway_camera_1_main#audio=opus
+  hallway_camera_1_sub:  rtsp://admin:egypt1@192.168.5.245:554/12
+
+  hallway_camera_2_main:
+  - ffmpeg:rtsp://admin:egypt1@192.168.5.248:554/11#video=copy#audio=copy
+  - ffmpeg:hallway_camera_2_main#audio=opus
+  hallway_camera_2_sub:  rtsp://admin:egypt1@192.168.5.248:554/12
+
+  # Kitchen, Master Bedroom, Office — ONVIF working correctly, no changes needed
+  kitchen_camera_1_main:
+  - onvif://admin:egypt1@192.168.5.18:8080
+  - ffmpeg:kitchen_camera_1_main#audio=opus
+  kitchen_camera_1_sub:  rtsp://admin:egypt1@192.168.5.18:554/12
+
+  kitchen_camera_2_main:
+  - onvif://admin:egypt1@192.168.5.64:8080
+  - ffmpeg:kitchen_camera_2_main#audio=opus
+  kitchen_camera_2_sub:  rtsp://admin:egypt1@192.168.5.64:554/12
+
+  master_bedroom_camera_1_main:
+  - onvif://admin:egypt1@192.168.5.236:8080
+  - ffmpeg:master_bedroom_camera_1_main#audio=opus
+  master_bedroom_camera_1_sub:  rtsp://admin:egypt1@192.168.5.236:554/12
+
+  office_camera_main:
+  - onvif://admin:egypt1@192.168.5.55:8080
+  - ffmpeg:office_camera_main#audio=opus
+  office_camera_sub:  rtsp://admin:egypt1@192.168.5.55:554/12
+
+  # -------------------------------------------------------
+  # Wyze cameras
+  # -------------------------------------------------------
+
+  # Living Room — Wyze Cam v3 Pro (HL_CAM3P, 192.168.5.62)
+  # wyze:// P2P working fine, left as-is
+  living_room_camera_main:
+  - wyze://192.168.5.62?dtls=true&enr=gvnv3V%2FieXQ3b%2FTb&mac=D03F2798D5B3&model=HL_CAM3P&uid=Z6A8GPTL2HBJM1X1111A&quality=hd
+  - ffmpeg:living_room_camera_main#audio=opus
+  living_room_camera_sub:  wyze://192.168.5.62?dtls=true&enr=gvnv3V%2FieXQ3b%2FTb&mac=D03F2798D5B3&model=HL_CAM3P&uid=Z6A8GPTL2HBJM1X1111A&quality=sd
+
+  # Front Door — Wyze Cam Pan v3 (HL_PAN3, 192.168.5.177)
+  # Switched from wyze:// P2P to direct RTSP — P2P had cloud discovery timeouts
+  # RTSP enabled in Wyze app (Settings → Advanced Settings → RTSP)
+  # Credentials: ra8844 / Egypti@n1975 (@ URL-encoded as %40)
+  # ffmpeg source required: camera SDP sends audio as track 0, video as track 1
+  # (go2rtc native RTSP only picks up audio when order is reversed)
+  front_door_camera_main:
+  - ffmpeg:rtsp://ra8844:Egypti%40n1975@192.168.5.177:554/stream0#video=copy#audio=copy
+  - ffmpeg:front_door_camera_main#audio=opus
+  front_door_camera_sub:  rtsp://ra8844:Egypti%40n1975@192.168.5.177:554/stream1
+
+  # -------------------------------------------------------
+  # Other cameras
+  # -------------------------------------------------------
+
+  # Eufy garage camera (192.168.5.179)
+  eufy_garage_camera_1_main: rtsp://Sharif_Nassar275:Egyptian_0221975@192.168.5.179/live0
+  eufy_garage_camera_1_sub:  rtsp://Sharif_Nassar275:Egyptian_0221975@192.168.5.179/live0
+
+  # August/3rd-party front doorbell (192.168.5.91)
+  # STATUS: ON HOLD — RTSP port 554 timing out, needs investigation
+  front_doorbell_main: rtsp://192.168.5.91:554/live/stream0
+  front_doorbell_sub:  rtsp://192.168.5.91:554/live/stream
+
+  # -------------------------------------------------------
+  # Roborock vacuums
+  # -------------------------------------------------------
+  Basboosa: roborock://mqtt-us-2.roborock.com:8883?u=6R86jzDBp3pzVuXJhvCAAA&s=2ljiM4&k=pq9jC1ZE&did=1ubIUrs6ByyS292PxgEvqn&key=nHjdhXIr0FvwMq3t&pin=1475
+  Billya:   roborock://mqtt-us-2.roborock.com:8883?u=6R86jzDBp3pzVuXJhvCAAA&s=2ljiM4&k=pq9jC1ZE&did=1uF3mQACMUpBH85rpoZU0P&key=ZHuhOpVYiOgZmeBk&pin=
+
+ptz:
+  # Wyze Pan v3 PTZ — still using wyze:// for PTZ control even though streaming uses RTSP
+  front_door_camera_main:
+    - wyze://192.168.5.177?dtls=true&enr=LXpAWo3xT%2Bs4ettg&mac=D03F27BCCA2D&model=HL_PAN3&uid=6LZN32SM98X9ULWF111A

@@ -112,14 +112,30 @@ Brand: GF-PH200 / Hipcam (cheap ONVIF knockoff cameras)
 - Main: `/11` (e.g. `rtsp://admin:<password>@192.168.5.174:554/11`)
 - Sub: `/12` (e.g. `rtsp://admin:<password>@192.168.5.174:554/12`)
 
-**go2rtc config (each camera):**
+**go2rtc config — camera-specific sources:**
+
+| Camera | go2rtc source | Reason |
+|--------|--------------|--------|
+| Master Bathroom 1 & 2 | `ffmpeg:rtsp://...554/11#video=copy#audio=copy` | Firmware bug: `profile-level-id=000001` in SDP — ffmpeg reads actual bitstream SPS and regenerates correct SDP (`420032` = Baseline Level 5.0) |
+| Hallway 1 & 2 | `ffmpeg:rtsp://...554/11#video=copy#audio=copy` | ONVIF connection was timing out intermittently |
+| Kitchen 1 & 2, Master Bedroom, Office | `onvif://admin:<password>@<ip>:8080` | ONVIF working correctly, no issues |
+
 ```yaml
+# Cameras with firmware SDP bug or ONVIF timeout — use ffmpeg source:
 master_bathroom_camera_1_main:
-  - onvif://admin:<password>@192.168.5.174:8080
+  - ffmpeg:rtsp://admin:<password>@192.168.5.174:554/11#video=copy#audio=copy
   - ffmpeg:master_bathroom_camera_1_main#audio=opus
 master_bathroom_camera_1_sub: rtsp://admin:<password>@192.168.5.174:554/12
+
+# Cameras with working ONVIF — leave as-is:
+kitchen_camera_1_main:
+  - onvif://admin:<password>@192.168.5.18:8080
+  - ffmpeg:kitchen_camera_1_main#audio=opus
+kitchen_camera_1_sub: rtsp://admin:<password>@192.168.5.18:554/12
 ```
 > Note: `ffmpeg:#audio=opus` transcodes from PCMA/G.711 A-law (garbled in HomeKit) to Opus.
+
+> Note: `ffmpeg:rtsp://...#video=copy#audio=copy` requires ffmpeg to be in PATH for go2rtc's LaunchDaemon. See Infrastructure section.
 
 **Scrypted:** `@scrypted/rtsp` plugin — connects to go2rtc RTSP rebroadcast (single producer)
 - RTSP URLs: `rtsp://192.168.5.87:8554/<camera>_main` (Opus audio from go2rtc transcode)
@@ -157,19 +173,22 @@ master_bathroom_camera_1_sub: rtsp://admin:<password>@192.168.5.174:554/12
 
 **go2rtc config:**
 ```yaml
+# Living Room — wyze:// P2P (working, left as-is)
 living_room_camera_main:
   - wyze://192.168.5.62?dtls=true&enr=gvnv3V%2FieXQ3b%2FTb&mac=D03F2798D5B3&model=HL_CAM3P&uid=Z6A8GPTL2HBJM1X1111A&quality=hd
   - ffmpeg:living_room_camera_main#audio=opus
 living_room_camera_sub: wyze://...&quality=sd
 
+# Front Door — switched from wyze:// P2P to direct RTSP (P2P had discovery timeouts)
+# Audio track is first in SDP (track 0), video second (track 1) — ffmpeg source handles this correctly
+# Credentials: ra8844 / Egypti@n1975 (@ must be URL-encoded as %40)
 front_door_camera_main:
-  - wyze://192.168.5.177?dtls=true&enr=LXpAWo3xT%2Bs4ettg&mac=D03F27BCCA2D&model=HL_PAN3&uid=6LZN32SM98X9ULWF111A&quality=hd
+  - ffmpeg:rtsp://ra8844:Egypti%40n1975@192.168.5.177:554/stream0#video=copy#audio=copy
   - ffmpeg:front_door_camera_main#audio=opus
-
-ptz:
-  front_door_camera_main:
-    - wyze://192.168.5.177?dtls=true&enr=LXpAWo3xT%2Bs4ettg&mac=D03F27BCCA2D&model=HL_PAN3&uid=6LZN32SM98X9ULWF111A
+front_door_camera_sub: rtsp://ra8844:Egypti%40n1975@192.168.5.177:554/stream1
 ```
+
+> Note: Wyze Pan v3 RTSP must be enabled in the Wyze app (Settings → Advanced Settings → RTSP) before the stream is accessible. Credentials are set in the app at time of enabling.
 
 **Scrypted:** `@scrypted/rtsp` plugin — connects to go2rtc RTSP rebroadcast
 - RTSP URLs: `rtsp://192.168.5.87:8554/living_room_camera_main`, `rtsp://192.168.5.87:8554/front_door_camera_main`
@@ -223,10 +242,25 @@ front_doorbell_sub: rtsp://192.168.5.91:554/live/stream
 
 - **Host:** Mac Mini M1 (`192.168.5.87`)
 - **Config:** `/Users/sn/docker/go2rtc.yaml`
-- **Running as:** root (LaunchDaemon `/Library/LaunchDaemons/`)
+- **Running as:** root (LaunchDaemon `/Library/LaunchDaemons/com.go2rtc.plist`)
 - **Ports:** 1984 (Web UI/API), 8554 (RTSP), 8555 (WebRTC TCP/UDP)
 - **Web UI:** `http://192.168.5.87:1984`
-- **Restart:** `sudo kill $(pgrep -f go2rtc)` on Mac Mini (launchd restarts it automatically)
+- **Restart:** `curl -X POST http://localhost:1984/api/restart` (or `sudo launchctl unload/load /Library/LaunchDaemons/com.go2rtc.plist`)
+- **ffmpeg PATH:** `/opt/homebrew/bin` added to LaunchDaemon environment via `EnvironmentVariables` in plist — required for `ffmpeg:rtsp://` sources
+- **Keepalive:** `~/Library/LaunchAgents/com.go2rtc.keepalive.plist` runs `~/go2rtc-keepalive.sh` — maintains persistent ffmpeg connections to all 10 Hipcam + Wyze cameras so they stay awake and go2rtc stays connected
+
+**Adding ffmpeg PATH to go2rtc LaunchDaemon** (required once after fresh install):
+```bash
+sudo /usr/libexec/PlistBuddy -c "Add :EnvironmentVariables dict" /Library/LaunchDaemons/com.go2rtc.plist
+sudo /usr/libexec/PlistBuddy -c "Add :EnvironmentVariables:PATH string /opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin" /Library/LaunchDaemons/com.go2rtc.plist
+sudo launchctl unload /Library/LaunchDaemons/com.go2rtc.plist
+sudo launchctl load /Library/LaunchDaemons/com.go2rtc.plist
+```
+
+**Installing the keepalive LaunchAgent** (required once after fresh install):
+```bash
+launchctl load ~/Library/LaunchAgents/com.go2rtc.keepalive.plist
+```
 
 ### Scrypted
 
@@ -504,3 +538,53 @@ The following is **now handled programmatically** (no UI required):
 
 Still required (manual, one-time):
 - **HomeKit bridge**: pair in Home app — open `https://192.168.5.87:10443`, go to each camera → Extensions → HomeKit, copy the pairing PIN, add accessory in Home app
+
+---
+
+## Session Log: 2026-03-25 — go2rtc Camera Fixes
+
+### Changes Made
+
+#### 1. Kitchen Camera 2 IP corrected
+- Old: `192.168.5.53` (wrong — camera was offline at that IP)
+- New: `192.168.5.64`
+- Fixed in `/Users/sn/docker/go2rtc.yaml`
+
+#### 2. go2rtc LaunchDaemon PATH fix
+go2rtc runs as root with no Homebrew in PATH. Added `EnvironmentVariables` to `/Library/LaunchDaemons/com.go2rtc.plist` so `/opt/homebrew/bin/ffmpeg` is accessible. Required for `ffmpeg:rtsp://` sources.
+
+#### 3. Master Bathroom Cameras 1 & 2 — ffmpeg source
+**Problem:** GF-PH200 firmware bug — `profile-level-id=000001` in RTSP SDP fmtp (invalid). go2rtc and Scrypted receive wrong codec metadata. Actual bitstream is correct (Baseline Level 5.0 = `420032`) but SDP says `000001`.
+
+**Fix:** Switched from `onvif://` to `ffmpeg:rtsp://...554/11#video=copy#audio=copy`. ffmpeg reads the actual SPS from the bitstream and regenerates the SDP with correct `profile-level-id=420032`. Scrypted now sees valid codec metadata.
+
+**Result:** go2rtc shows `profile: Baseline, level: 50` for both cameras.
+
+#### 4. Hallway Cameras 1 & 2 — ffmpeg source
+**Problem:** `onvif://` source was timing out intermittently (`connection timed out` in go2rtc logs). Cameras go into idle/sleep state when no clients connected.
+
+**Fix:** Same as bathroom — `ffmpeg:rtsp://...554/11#video=copy#audio=copy`. Direct RTSP bypasses ONVIF handshake, more reliable on reconnect.
+
+#### 5. Front Door Camera (Wyze Pan v3) — RTSP direct
+**Problem:** `wyze://` P2P was failing with `discovery timeout` and `av login failed: context deadline exceeded`. Wyze P2P depends on cloud infrastructure which was intermittently unavailable.
+
+**Fix:** Enabled RTSP on camera via Wyze app (Settings → Advanced Settings → RTSP). Switched go2rtc source to `ffmpeg:rtsp://ra8844:Egypti%40n1975@192.168.5.177:554/stream0#video=copy#audio=copy`.
+
+**Why ffmpeg source:** Camera SDP sends audio as track 0 and video as track 1. go2rtc's native RTSP receiver only picks up audio in this case. ffmpeg handles reversed track order correctly.
+
+**Result:** 1920x1080 H264 Main 20fps streaming via RTSP.
+
+#### 6. Keepalive LaunchAgent
+**Problem:** Hipcam cameras go into idle sleep when no RTSP clients connected. go2rtc uses lazy loading — only connects to cameras when Scrypted requests a stream. On wakeup, camera takes a few seconds to respond, causing initial timeout.
+
+**Fix:** Created `~/go2rtc-keepalive.sh` — runs one persistent `ffmpeg` process per camera that reads from go2rtc's RTSP rebroadcast indefinitely (reconnects after 5s if dropped). Installed as user LaunchAgent (`~/Library/LaunchAgents/com.go2rtc.keepalive.plist`).
+
+**Cameras covered:** All 8 Hipcam + Living Room Wyze + Front Door Wyze (10 total).
+
+### Cameras Left on ONVIF (working fine, no changes needed)
+- Kitchen Camera 1 & 2
+- Master Bedroom Camera 1
+- Office Camera
+
+### Pending
+- **August Doorbell** (192.168.5.91) — RTSP port 554 timing out, needs investigation
