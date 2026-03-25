@@ -6,7 +6,9 @@ Cameras are split across two systems:
 - **Home Assistant (HA)** — motion/event recording, automations, entity sensors
 - **Scrypted** — HomeKit Secure Video (HKSV), HomeKit streaming, hardware transcoding
 
-**go2rtc** runs natively on the Mac Mini (`192.168.5.87`) as a stream rebroadcaster and protocol bridge between cameras and HA/Scrypted.
+**go2rtc** runs natively on the Mac Mini M1 (`192.168.5.87`) as a stream rebroadcaster and protocol bridge between cameras and HA/Scrypted.
+
+**wyze-bridge** and **Scrypted** both run as Docker containers on the Mac Mini M1. It handles the Wyze P2P protocol and publishes motion events to MQTT — it is not in the video path (go2rtc handles Wyze video natively via `wyze://`).
 
 ---
 
@@ -15,31 +17,37 @@ Cameras are split across two systems:
 ```
 Camera Hardware
       │
-      ├─── Reolink cameras/doorbells ──► HA Reolink Integration (native HTTP API)
-      │                                        │
-      │                                        └─► Scrypted (Reolink Native Plugin)
-      │                                                  │
-      │                                                  └─► HomeKit (HKSV + doorbell + 2-way audio)
+      ├─── Reolink cameras/doorbells ──────────────┬─► HA (native Reolink HTTP API)
+      │                                             │
+      │                                             └─► Scrypted (Reolink Native Plugin)
+      │                                                       │
+      │                                                       └─► HomeKit (HKSV + doorbell + 2-way audio)
       │
-      ├─── Generic ONVIF cameras ──────► go2rtc (ONVIF source → RTSP rebroadcast)
-      │           (port 8080)          │       │
-      │                                │       └─► HA (RTSP stream for dashboard/recorder)
-      │                                │
-      │                                └─► Scrypted (ONVIF Plugin, direct to camera)
-      │                                          │
-      │                                          └─► HomeKit (HKSV + motion via ONVIF events)
+      ├─── Generic ONVIF cameras (port 8080) ──────┬─► go2rtc (ONVIF → RTSP rebroadcast)
+      │                                             │         │
+      │                                             │         └─► HA (RTSP stream for dashboard/recorder)
+      │                                             │
+      │                                             └─► Scrypted (ONVIF Plugin, direct to camera)
+      │                                                       │
+      │                                                       └─► HomeKit (HKSV + motion via ONVIF events)
       │
-      ├─── Wyze cameras ───────────────► go2rtc (wyze:// native protocol → RTSP)
-      │                                        │
-      │                                        └─► Scrypted (RTSP Plugin via go2rtc)
-      │                                                  │
-      │                                                  └─► HomeKit (HKSV, no motion events)
+      ├─── Wyze cameras ───────────────────────────┬─► go2rtc (wyze:// → RTSP rebroadcast)
+      │                                             │         │
+      │                                             │         └─► Scrypted (RTSP Plugin)
+      │                                             │                   │
+      │                                             │                   └─► HomeKit (HKSV)
+      │                                             │
+      │                                             └─► wyze-bridge (Docker, P2P → MQTT motion)
+      │                                                       │
+      │                                                       └─► MQTT broker → Scrypted virtual
+      │                                                           motion sensor → HKSV trigger
       │
-      └─── Eufy garage camera ─────────► go2rtc (RTSP source)
-                                               │
-                                               └─► Scrypted (RTSP Plugin)
-                                                         │
-                                                         └─► HomeKit (HKSV)
+      ├─── Eufy garage camera ─────────────────────► go2rtc (RTSP source)
+      │         [Scrypted/HomeKit: pending]                   │
+      │                                                       └─► Scrypted (RTSP Plugin) [pending]
+      │
+      └─── Front doorbell (August) ────────────────► go2rtc (RTSP source)
+                [ON HOLD — connectivity issues]
 ```
 
 ---
@@ -206,7 +214,7 @@ front_doorbell_sub: rtsp://192.168.5.91:554/live/stream
 
 ### go2rtc
 
-- **Host:** Mac Mini (`192.168.5.87`)
+- **Host:** Mac Mini M1 (`192.168.5.87`)
 - **Config:** `/Users/sn/docker/go2rtc.yaml`
 - **Running as:** root (LaunchDaemon `/Library/LaunchDaemons/`)
 - **Ports:** 1984 (Web UI/API), 8554 (RTSP), 8555 (WebRTC TCP/UDP)
@@ -215,8 +223,8 @@ front_doorbell_sub: rtsp://192.168.5.91:554/live/stream
 
 ### Scrypted
 
-- **Host:** Mac Mini (`192.168.5.87`)
-- **Running as:** user (LaunchAgent)
+- **Host:** Mac Mini M1 (`192.168.5.87`)
+- **Running as:** Docker container
 - **Web UI:** `https://192.168.5.87:10443`
 - **Plugins installed:**
   - `@scrypted/onvif` — generic ONVIF cameras
@@ -231,6 +239,14 @@ front_doorbell_sub: rtsp://192.168.5.91:554/live/stream
   - `@scrypted/snapshot` — snapshot support
 
 **MQTT broker:** `192.168.5.182:1883`, username `snassar`
+
+### wyze-bridge
+
+- **Host:** Mac Mini M1 (`192.168.5.87`)
+- **Running as:** Docker container
+- **Purpose:** Wyze motion events only — connects to Wyze cameras via P2P and publishes motion to MQTT topic `wyzebridge/<camera_name>/motion`
+- **Not used for video** — go2rtc handles Wyze video streams natively via `wyze://` protocol
+- **MQTT topics:** `wyzebridge/living_room_camera/motion`, `wyzebridge/front_door_camera/motion`
 
 ### Home Assistant
 
