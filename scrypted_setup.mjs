@@ -81,6 +81,7 @@ const GARAGE_OUTSIDE_CAMERA = {
   name: "Garage Outside Camera",
   url:  "rtsp://192.168.5.87:8554/garage_outside_camera_main",
   sub:  "rtsp://192.168.5.87:8554/garage_outside_camera_sub",
+  ip:   "192.168.5.84",
 };
 
 const REOLINK_CAMERAS = [
@@ -189,7 +190,11 @@ async function main() {
     // go2rtc keeps a persistent RTSP connection to the camera and caches the last frame.
     // When Scrypted's FFmpeg pipeline restarts, go2rtc still serves the last good JPEG —
     // preventing the black snapshot that appears during the FFmpeg restart window.
-    await device.putSetting("snapshot:snapshotUrl", "http://192.168.5.87:1984/api/stream.jpeg?src=garage_outside_camera_main");
+    // Use camera's direct HTTP snapshot API — independent of RTSP/go2rtc state.
+    // go2rtc JPEG endpoint returns blank when no consumer is connected (prebuffer restart).
+    // Camera HTTP API always serves the latest JPEG regardless of RTSP connection status.
+    const garageCamPass = encodeURIComponent(process.env.GARAGE_CAMERA_PASSWORD || "<garage-camera-password>");
+    await device.putSetting("snapshot:snapshotUrl", `http://${GARAGE_OUTSIDE_CAMERA.ip}/cgi-bin/api.cgi?cmd=Snap&channel=0&user=admin&password=${garageCamPass}`);
     await device.putSetting("snapshot:snapshotsFromPrebuffer", "Disabled");
 
     await sleep(500);

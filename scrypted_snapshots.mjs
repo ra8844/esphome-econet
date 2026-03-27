@@ -12,9 +12,10 @@
 
 import { connectScryptedClient } from "/Users/sn/.npm/_npx/f8ff587849d254b8/node_modules/@scrypted/client/dist/packages/client/src/index.js";
 
-const API_TOKEN       = process.env.SCRYPTED_TOKEN    || "<paste-token-here>";
-const REOLINK_PASSWORD = process.env.REOLINK_PASSWORD || "<reolink-password>";
-const GO2RTC          = "http://192.168.5.87:1984";
+const API_TOKEN              = process.env.SCRYPTED_TOKEN         || "<paste-token-here>";
+const REOLINK_PASSWORD       = process.env.REOLINK_PASSWORD       || "<reolink-password>";
+const GARAGE_CAMERA_PASSWORD = process.env.GARAGE_CAMERA_PASSWORD || "<garage-camera-password>";
+const GO2RTC                 = "http://192.168.5.87:1984";
 
 // go2rtc JPEG snapshot: http://192.168.5.87:1984/api/stream.jpeg?src=<stream>
 const RTSP_SNAPSHOTS = [
@@ -28,14 +29,15 @@ const RTSP_SNAPSHOTS = [
   { name: "Office Camera",            stream: "office_camera_main"            },
   { name: "Living Room Camera",       stream: "living_room_camera_main"       },
   { name: "Front Door Camera",        stream: "front_door_camera_main"        },
-  { name: "Garage Outside Camera",    stream: "garage_outside_camera_main"    },
 ];
 
-// Camera HTTP JPEG API (doorbells are direct — not via go2rtc)
-const DOORBELL_SNAPSHOTS = [
-  { name: "Courtyard Doorbell",      ip: "192.168.5.141" },
-  { name: "Backyard Doorbell",       ip: "192.168.5.74"  },
-  { name: "Garage Outside Doorbell", ip: "192.168.5.163" },
+// Camera HTTP JPEG API — direct to camera (not via go2rtc)
+// go2rtc JPEG endpoint goes blank when no consumer is connected; camera HTTP API is always live.
+const DIRECT_SNAPSHOTS = [
+  { name: "Garage Outside Camera",   ip: "192.168.5.84",  password: GARAGE_CAMERA_PASSWORD },
+  { name: "Courtyard Doorbell",      ip: "192.168.5.141", password: REOLINK_PASSWORD },
+  { name: "Backyard Doorbell",       ip: "192.168.5.74",  password: REOLINK_PASSWORD },
+  { name: "Garage Outside Doorbell", ip: "192.168.5.163", password: REOLINK_PASSWORD },
 ];
 
 async function main() {
@@ -64,13 +66,12 @@ async function main() {
     }
   }
 
-  // ── Reolink doorbells — camera HTTP JPEG API ───────────────────────────────
-  console.log("\n=== Applying camera HTTP snapshot URLs (Reolink doorbells) ===");
-  const pass = encodeURIComponent(REOLINK_PASSWORD);
-  for (const cam of DOORBELL_SNAPSHOTS) {
+  // ── Direct camera HTTP JPEG API (Garage Outside Camera + doorbells) ────────
+  console.log("\n=== Applying direct camera HTTP snapshot URLs ===");
+  for (const cam of DIRECT_SNAPSHOTS) {
     const device = sm.getDeviceByName(cam.name);
     if (!device) { console.log(`  ✗ ${cam.name} — not found`); continue; }
-    const url = `http://${cam.ip}/cgi-bin/api.cgi?cmd=Snap&channel=0&user=admin&password=${pass}`;
+    const url = `http://${cam.ip}/cgi-bin/api.cgi?cmd=Snap&channel=0&user=admin&password=${encodeURIComponent(cam.password)}`;
     try {
       await device.putSetting("snapshot:snapshotUrl", url);
       await device.putSetting("snapshot:snapshotsFromPrebuffer", "Disabled");
