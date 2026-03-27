@@ -179,6 +179,12 @@ async function main() {
     await device.putSetting(`prebuffer:syntheticInputIdKey-${main}`, "h264Preview_01_main");
     await device.putSetting(`prebuffer:syntheticInputIdKey-${sub}`,  "h264Preview_01_sub");
 
+    // Use go2rtc JPEG snapshot API instead of prebuffer snapshot.
+    // go2rtc keeps a persistent RTSP connection to the camera and caches the last frame.
+    // When Scrypted's FFmpeg pipeline restarts, go2rtc still serves the last good JPEG —
+    // preventing the black snapshot that appears during the FFmpeg restart window.
+    await device.putSetting("snapshot:snapshotUrl", "http://192.168.5.87:1984/api/stream.jpeg?src=garage_outside_camera_main");
+
     await sleep(500);
     console.log(`  ✓ Garage Outside Camera  (id=${id})`);
   } catch (e) {
