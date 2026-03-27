@@ -121,6 +121,9 @@ streams:
   - wyze://192.168.5.62?dtls=true&enr=gvnv3V%2FieXQ3b%2FTb&mac=D03F2798D5B3&model=HL_CAM3P&uid=Z6A8GPTL2HBJM1X1111A&quality=hd
   - ffmpeg:living_room_camera_main#audio=opus
   living_room_camera_sub:  wyze://192.168.5.62?dtls=true&enr=gvnv3V%2FieXQ3b%2FTb&mac=D03F2798D5B3&model=HL_CAM3P&uid=Z6A8GPTL2HBJM1X1111A&quality=sd
+  living_room_camera_synology:
+  - living_room_camera_main
+  - ffmpeg:living_room_camera_main#audio=aac
 
   # Front Door — Wyze Cam Pan v3 (HL_PAN3, 192.168.5.177)
   # Using wyze:// P2P (switched back from direct RTSP)
@@ -128,6 +131,9 @@ streams:
   - wyze://192.168.5.177?dtls=true&enr=LXpAWo3xT%2Bs4ettg&mac=D03F27BCCA2D&model=HL_PAN3&uid=6LZN32SM98X9ULWF111A&quality=hd
   - ffmpeg:front_door_camera_main#audio=opus
   front_door_camera_sub:  wyze://192.168.5.177?dtls=true&enr=LXpAWo3xT%2Bs4ettg&mac=D03F27BCCA2D&model=HL_PAN3&uid=6LZN32SM98X9ULWF111A&quality=sd
+  front_door_camera_synology:
+  - front_door_camera_main
+  - ffmpeg:front_door_camera_main#audio=aac
 
   # -------------------------------------------------------
   # Other cameras

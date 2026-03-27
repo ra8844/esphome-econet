@@ -287,23 +287,31 @@ living_room_camera_main:
   - wyze://192.168.5.62?dtls=true&enr=gvnv3V%2FieXQ3b%2FTb&mac=D03F2798D5B3&model=HL_CAM3P&uid=Z6A8GPTL2HBJM1X1111A&quality=hd
   - ffmpeg:living_room_camera_main#audio=opus
 living_room_camera_sub: wyze://...&quality=sd
+living_room_camera_synology:
+  - living_room_camera_main
+  - ffmpeg:living_room_camera_main#audio=aac
 
-# Front Door — switched from wyze:// P2P to direct RTSP (P2P had discovery timeouts)
-# Audio track is first in SDP (track 0), video second (track 1) — ffmpeg source handles this correctly
-# Credentials: ra8844 / Egypti@n1975 (@ must be URL-encoded as %40)
+# Front Door — using wyze:// P2P
 front_door_camera_main:
-  - ffmpeg:rtsp://ra8844:Egypti%40n1975@192.168.5.177:554/stream0#video=copy#audio=copy
+  - wyze://192.168.5.177?dtls=true&enr=LXpAWo3xT%2Bs4ettg&mac=D03F27BCCA2D&model=HL_PAN3&uid=6LZN32SM98X9ULWF111A&quality=hd
   - ffmpeg:front_door_camera_main#audio=opus
-front_door_camera_sub: rtsp://ra8844:Egypti%40n1975@192.168.5.177:554/stream1
+front_door_camera_sub: wyze://...&quality=sd
+front_door_camera_synology:
+  - front_door_camera_main
+  - ffmpeg:front_door_camera_main#audio=aac
 ```
 
-> Note: Wyze Pan v3 RTSP must be enabled in the Wyze app (Settings → Advanced Settings → RTSP) before the stream is accessible. Credentials are set in the app at time of enabling.
+> Note: The `_synology` variants are for Surveillance Station. They keep H.264 video and transcode audio to AAC. The existing main Wyze streams remain Opus for Scrypted/HomeKit.
 
 **Scrypted:** `@scrypted/rtsp` plugin — connects to go2rtc RTSP rebroadcast
 - RTSP URLs: `rtsp://192.168.5.87:8554/living_room_camera_main`, `rtsp://192.168.5.87:8554/front_door_camera_main`
 - Scrypted IDs: 46 (Living Room Camera), 47 (Front Door Camera)
 - Motion events: CoreML object detection (M1 Neural Engine) via `@scrypted/coreml` + `@scrypted/objectdetector` mixins
 - HKSV triggered by CoreML motion — no MQTT, no wyze-bridge required
+
+**Synology Surveillance Station:**
+- RTSP URLs: `rtsp://192.168.5.87:8554/living_room_camera_synology`, `rtsp://192.168.5.87:8554/front_door_camera_synology`
+- Use H.264 video with AAC audio
 
 **HomeKit pairing PINs:**
 
