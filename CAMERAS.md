@@ -302,6 +302,7 @@ front_door_camera_synology:
 ```
 
 > Note: The `_synology` variants are for Surveillance Station. They keep H.264 video and transcode audio to AAC. The existing main Wyze streams remain Opus for Scrypted/HomeKit.
+> These `_synology` RTSP URLs only work after the live `/Users/sn/docker/go2rtc.yaml` has been updated and `go2rtc` reloaded on `192.168.5.87`.
 
 **Scrypted:** `@scrypted/rtsp` plugin — connects to go2rtc RTSP rebroadcast
 - RTSP URLs: `rtsp://192.168.5.87:8554/living_room_camera_main`, `rtsp://192.168.5.87:8554/front_door_camera_main`
@@ -345,11 +346,26 @@ eufy_garage_camera_1_main: rtsp://admin:<password>@192.168.5.179/live0
 
 **go2rtc config:**
 ```yaml
-front_doorbell_main: rtsp://192.168.5.91:554/live/stream0
-front_doorbell_sub: rtsp://192.168.5.91:554/live/stream
+# Internet-backed candidates
+front_doorbell_candidate_internet_1: rtsp://192.168.5.91:554/live/stream
+front_doorbell_candidate_internet_2: rtsp://192.168.5.91:554/live/stream0
+front_doorbell_candidate_internet_3: rtsp://192.168.5.91:554/live/stream1
+
+# Local guesses from prior testing
+front_doorbell_candidate_local_1: rtsp://192.168.5.91:554/stream
+front_doorbell_candidate_local_2: rtsp://192.168.5.91:554/stream0
+front_doorbell_candidate_local_3: rtsp://192.168.5.91:554/stream1
 ```
 
-**Status: ON HOLD** — connectivity issues; needs investigation before adding to Scrypted/HomeKit
+> Note: These August/3rd-party doorbell RTSP paths are all unverified candidates. Internet references support the `/live/stream*` family, with `/live/stream` the strongest candidate. The `/stream*` family is from prior local guessing only and has not been confirmed online.
+
+**Latest live verification (2026-03-27):**
+- Probed all 6 candidates from the Mac Mini (`192.168.5.87`)
+- `rtsp://192.168.5.91:554/live/stream` timed out once
+- subsequent probes failed because `192.168.5.91` became unreachable (`Host is down`, ARP incomplete)
+- current blocker is device/network reachability, not a confirmed RTSP path mismatch
+
+**Status: ON HOLD** — RTSP connectivity issues; needs validation before adding to Scrypted/HomeKit
 
 ---
 
