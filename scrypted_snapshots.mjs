@@ -57,6 +57,7 @@ async function main() {
     const url = `${GO2RTC}/api/stream.jpeg?src=${cam.stream}`;
     try {
       await device.putSetting("snapshot:snapshotUrl", url);
+      await device.putSetting("snapshot:snapshotsFromPrebuffer", "Disabled");
       console.log(`  ✓ ${cam.name}`);
     } catch (e) {
       console.log(`  ✗ ${cam.name} — ${e.message}`);
@@ -72,6 +73,7 @@ async function main() {
     const url = `http://${cam.ip}/cgi-bin/api.cgi?cmd=Snap&channel=0&user=admin&password=${pass}`;
     try {
       await device.putSetting("snapshot:snapshotUrl", url);
+      await device.putSetting("snapshot:snapshotsFromPrebuffer", "Disabled");
       console.log(`  ✓ ${cam.name}`);
     } catch (e) {
       console.log(`  ✗ ${cam.name} — ${e.message}`);

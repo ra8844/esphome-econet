@@ -140,6 +140,7 @@ async function main() {
       // prebuffer restarts (prevents black snapshot flashes in HomeKit).
       const streamName = cam.url.split("/").pop();
       await device.putSetting("snapshot:snapshotUrl", `http://192.168.5.87:1984/api/stream.jpeg?src=${streamName}`);
+      await device.putSetting("snapshot:snapshotsFromPrebuffer", "Disabled");
       console.log(`  ✓ ${cam.name}  (id=${id})`);
     } catch (e) {
       console.log(`  ✗ ${cam.name}  — ${e.message}`);
@@ -189,6 +190,7 @@ async function main() {
     // When Scrypted's FFmpeg pipeline restarts, go2rtc still serves the last good JPEG —
     // preventing the black snapshot that appears during the FFmpeg restart window.
     await device.putSetting("snapshot:snapshotUrl", "http://192.168.5.87:1984/api/stream.jpeg?src=garage_outside_camera_main");
+    await device.putSetting("snapshot:snapshotsFromPrebuffer", "Disabled");
 
     await sleep(500);
     console.log(`  ✓ Garage Outside Camera  (id=${id})`);
@@ -236,6 +238,7 @@ async function main() {
       // Doorbells are direct (no go2rtc) — use camera's HTTP JPEG snapshot API directly.
       const pass = process.env.REOLINK_PASSWORD || "<reolink-password>";
       await device.putSetting("snapshot:snapshotUrl", `http://${cam.ip}/cgi-bin/api.cgi?cmd=Snap&channel=0&user=admin&password=${encodeURIComponent(pass)}`);
+      await device.putSetting("snapshot:snapshotsFromPrebuffer", "Disabled");
       await sleep(500);
     } catch (e) {
       console.log(`  ✗ ${cam.name}  — ${e.message}`);
