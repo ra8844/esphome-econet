@@ -135,6 +135,11 @@ async function main() {
       const device = sm.getDeviceById(id);
       await device.putSetting("urls", [cam.url]);
       await sleep(10000); // plugin needs ~10s to process each URL change
+      // go2rtc JPEG snapshot: decouples snapshots from Scrypted's prebuffer —
+      // go2rtc caches the last frame independently so snapshots stay valid during
+      // prebuffer restarts (prevents black snapshot flashes in HomeKit).
+      const streamName = cam.url.split("/").pop();
+      await device.putSetting("snapshot:snapshotUrl", `http://192.168.5.87:1984/api/stream.jpeg?src=${streamName}`);
       console.log(`  ✓ ${cam.name}  (id=${id})`);
     } catch (e) {
       console.log(`  ✗ ${cam.name}  — ${e.message}`);
@@ -228,6 +233,9 @@ async function main() {
       await device.putSetting(`prebuffer:rtspParser-${DOORBELL_RTSP_KEY}`,            "FFmpeg (TCP)");
       await device.putSetting(`prebuffer:ffmpegInputArguments-${DOORBELL_RTSP_KEY}`,  "-hwaccel videotoolbox");
       await device.putSetting(`prebuffer:ffmpegOutputArguments-${DOORBELL_RTSP_KEY}`, "-vf scale=1280:960 -c:v h264_videotoolbox -b:v 2000k -profile:v high -level:v 4.0 -realtime 1 -c:a copy");
+      // Doorbells are direct (no go2rtc) — use camera's HTTP JPEG snapshot API directly.
+      const pass = process.env.REOLINK_PASSWORD || "<reolink-password>";
+      await device.putSetting("snapshot:snapshotUrl", `http://${cam.ip}/cgi-bin/api.cgi?cmd=Snap&channel=0&user=admin&password=${encodeURIComponent(pass)}`);
       await sleep(500);
     } catch (e) {
       console.log(`  ✗ ${cam.name}  — ${e.message}`);

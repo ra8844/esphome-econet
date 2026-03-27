@@ -91,6 +91,7 @@ Camera Hardware
 - Two-way audio in Home app
 - Motion/AI detection via camera onboard AI (person/vehicle/animal)
 - Each doorbell is a standalone HomeKit accessory
+- **Snapshot URL:** `http://<ip>/cgi-bin/api.cgi?cmd=Snap&channel=0&user=admin&password=<pass>` (camera HTTP API — doorbells are not via go2rtc)
 
 **HomeKit video transcoding (VideoToolbox):**
 
@@ -138,6 +139,7 @@ These settings are automatically applied by `scrypted_setup.mjs` at camera creat
 - go2rtc streams: `rtsp://192.168.5.87:8554/garage_outside_camera_main` / `_sub`
 - Motion/AI detection via HTTP polling to camera port 80 (independent of RTSP video path)
 - FFmpeg VideoToolbox transcoding: 2560x1440 H.264 High 5.1 → 1920x1080 H.264 High 4.0 for HomeKit
+- **Snapshot URL:** `http://192.168.5.87:1984/api/stream.jpeg?src=garage_outside_camera_main` (go2rtc JPEG API — stays valid during FFmpeg restart windows)
 - Standalone HomeKit accessory
 
 **Why @scrypted/reolink instead of reolink-native:**
@@ -226,6 +228,31 @@ kitchen_camera_1_sub: rtsp://admin:<password>@192.168.5.18:554/12
 - Scrypted device IDs: see table above
 - All have Rebroadcast + WebRTC + Snapshot + HomeKit + CoreML (ObjectDetector) mixins
 - All set to standalone HomeKit accessory mode
+- **Snapshot URL:** `http://192.168.5.87:1984/api/stream.jpeg?src=<camera>_main` (go2rtc JPEG API — see below)
+
+**Snapshot source (go2rtc JPEG API):**
+
+All Hipcam/Wyze cameras use go2rtc's JPEG snapshot API instead of Scrypted's prebuffer snapshot.
+go2rtc maintains its own persistent connection to each camera and caches the latest frame independently
+of Scrypted's FFmpeg pipeline — so snapshots remain valid during prebuffer restarts, preventing the
+black flash in HomeKit that occurs when the prebuffer is rebuilding.
+
+Snapshot URL pattern: `http://192.168.5.87:1984/api/stream.jpeg?src=<stream_name>`
+
+| Camera | Snapshot URL |
+|--------|-------------|
+| Master Bathroom Camera 1 | `…?src=master_bathroom_camera_1_main` |
+| Master Bathroom Camera 2 | `…?src=master_bathroom_camera_2_main` |
+| Master Bedroom Camera 1 | `…?src=master_bedroom_camera_1_main` |
+| Hallway Camera 1 | `…?src=hallway_camera_1_main` |
+| Hallway Camera 2 | `…?src=hallway_camera_2_main` |
+| Kitchen Camera 1 | `…?src=kitchen_camera_1_main` |
+| Kitchen Camera 2 | `…?src=kitchen_camera_2_main` |
+| Office Camera | `…?src=office_camera_main` |
+| Living Room Camera | `…?src=living_room_camera_main` |
+| Front Door Camera | `…?src=front_door_camera_main` |
+
+Set automatically by `scrypted_setup.mjs`.
 
 **Known limitations:**
 - Two-way audio is disabled by manufacturer (firmware-locked, paid upgrade)
