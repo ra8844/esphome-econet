@@ -471,7 +471,7 @@ Scrypted's LevelDB database was corrupted after a forced process kill (`launchct
 
 4. **MQTT motion sensors recreated** with `template: "motion-sensor.ts"` — required to get `MotionSensor` interface. Previously created without template, giving only `DeviceProvider,Settings` and no script.
 
-5. **All HomeKit PINs regenerated** (new PINs — old PINs from previous Scrypted instance are invalid). Updated in this file.
+5. **All HomeKit PINs regenerated** (new PINs — old PINs from the previous Scrypted instance became invalid).
 
 ### Key Lessons
 
@@ -494,29 +494,32 @@ Scrypted's LevelDB database was corrupted after a forced process kill (`launchct
 
 ### What Was Done
 
-Complete programmatic setup of native Scrypted on Mac Mini M1 — no UI required.
+Complete programmatic setup of native Scrypted on Mac Mini M1. Camera creation and mixin setup are scripted; Home app pairing still remains a manual step.
 
 1. **Admin account created** via HTTP POST `/login` — returned short API token
 2. **CLI auth** — wrote token to `~/.scrypted/login.json` to allow `npx scrypted install` without TTY
 3. **8 plugins installed** via `npx scrypted install <plugin> 127.0.0.1`
 4. **All 14 cameras added** via `@scrypted/client` SDK (`createDevice()` on RTSP and Reolink plugin devices)
-5. **All mixins applied** programmatically via `pluginsComponent.setMixins()`:
-   - RTSP cameras: Rebroadcast (2) + WebRTC (7) + Snapshot (3) + HomeKit (10) + CoreML (8)
-   - Reolink cameras: Rebroadcast (2) + WebRTC (7) + Snapshot (3) + HomeKit (10) [native AI motion]
+5. **All mixins applied** programmatically:
+   - RTSP cameras: Rebroadcast + WebRTC + Snapshot + HomeKit + CoreML
+   - Reolink cameras: Rebroadcast + WebRTC + Snapshot + HomeKit [native AI motion]
 6. **CoreML applied to RTSP cameras** via discovered two-step process:
-   - Enable `developerMode` on Video Analysis Plugin (9) — unlocks `canMixin` for ObjectDetection devices
-   - Apply VA (9) as mixin to CoreML (8) → CoreML gains `MixinProvider` interface
-   - Apply CoreML (8) as mixin to each RTSP camera → cameras gain `ObjectDetector` interface
+   - Enable `developerMode` on Video Analysis Plugin — unlocks `canMixin` for `ObjectDetection` devices
+   - Apply Video Analysis Plugin as a mixin to CoreML Object Detection → CoreML gains `MixinProvider`
+   - Apply CoreML Object Detection as a mixin to each RTSP camera → cameras gain `ObjectDetector`
 
 ### Key Technical Discovery
 
-The Video Analysis Plugin (device 9) does NOT directly mixin cameras. Its architecture:
-- `canMixin` on device 9 only accepts `ObjectDetection` devices (with `developerMode` or `ObjectDetectionGenerator`)
-- When applied to CoreML (8), its `getMixin` creates an `I` instance with `canMixin` for Camera/Doorbell type
+The Video Analysis Plugin does NOT directly mixin cameras. Its architecture:
+- `canMixin` on Video Analysis Plugin only accepts `ObjectDetection` devices (with `developerMode` or `ObjectDetectionGenerator`)
+- When applied to CoreML Object Detection, its `getMixin` creates an `I` instance with `canMixin` for Camera/Doorbell type
 - CoreML then gains `MixinProvider` interface and can be applied to cameras
 - Cameras receive `ObjectDetector` (+ `MotionSensor` only if model has "motion" class — CoreML object detection doesn't)
 
-### Device IDs (current install)
+### Device IDs (example install)
+
+Device IDs are install-specific and can change after a fresh install, plugin reinstall,
+or repair workflow. Use device names in scripts where possible.
 
 | Device | ID | Plugin |
 |--------|----|--------|
@@ -525,7 +528,7 @@ The Video Analysis Plugin (device 9) does NOT directly mixin cameras. Its archit
 | Snapshot | 3 | @scrypted/snapshot |
 | WebRTC | 7 | @scrypted/webrtc |
 | CoreML Object Detection | 8 | @scrypted/coreml |
-| Video Analysis Plugin | 9 | @scrypted/objectdetector |
+| Video Analysis Plugin | 83 | @scrypted/objectdetector |
 | HomeKit | 10 | @scrypted/homekit |
 | Reolink Native | 11 | @apocaliss92/scrypted-reolink-native |
 | Master Bathroom Camera 1 | 38 | |
@@ -544,11 +547,11 @@ The Video Analysis Plugin (device 9) does NOT directly mixin cameras. Its archit
 | Reolink Camera Plugin | 74 | @scrypted/reolink |
 | Garage Outside Camera | 75 | @scrypted/reolink |
 
-### Remaining Manual Steps
+### Remaining Manual Steps After Fresh Setup
 
 - [ ] Pair each camera in Home app (get PIN from Scrypted UI → camera → Extensions → HomeKit)
 - [ ] Remove Docker Scrypted and wyze-bridge containers once confirmed working
-- [ ] Verify CoreML motion triggers in Home app
+- [ ] Verify HomeKit recording options after pairing or re-pairing RTSP cameras
 
 ---
 
@@ -630,14 +633,15 @@ count to exceed the camera firmware's limit. The camera interprets this as an at
 
 ### Scrypted Device IDs After This Change
 
-Old (reolink-native): Garage Outside Camera = ID 64 (deleted due to reboot loop)
-New (@scrypted/reolink): Reolink Camera Plugin = ID 74, Garage Outside Camera = ID 75
+Example from the repaired install:
+- Old (reolink-native): Garage Outside Camera = ID 64 (deleted due to reboot loop)
+- New (@scrypted/reolink): Reolink Camera Plugin = ID 74, Garage Outside Camera = ID 75
 
 ---
 
 ## Programmatic Setup — Scrypted API Access
 
-All 14 cameras can be added to a fresh Scrypted install programmatically using the setup script in this repo (`scrypted_setup.mjs`). No manual UI clicks required.
+All 14 cameras can be added to a fresh Scrypted install programmatically using the setup script in this repo (`scrypted_setup.mjs`). Existing installs can be repaired with `scrypted_mixins.mjs` if the RTSP camera mixin chain or HomeKit pairing state drifts.
 
 ### How It Works
 
@@ -688,14 +692,32 @@ The script uses `@scrypted/client` (bundled by npx scrypted) to connect via WebS
 
 ### After Running the Script
 
-The following is **now handled programmatically** (no UI required):
+The following is **now handled programmatically**:
 1. ✅ All 14 cameras added with correct names
-2. ✅ RTSP cameras (38-47): Rebroadcast + WebRTC + Snapshot + HomeKit + CoreML (ObjectDetector) mixins
-3. ✅ Reolink cameras (48, 53, 59, 64): Rebroadcast + WebRTC + Snapshot + HomeKit + native AI motion
-4. ✅ CoreML enabled by: (a) enable `developerMode` on Video Analysis Plugin (9), (b) apply VA (9) as mixin to CoreML (8), (c) apply CoreML (8) as mixin to each RTSP camera
+2. ✅ RTSP cameras: Rebroadcast + WebRTC + Snapshot + HomeKit + CoreML mixins
+3. ✅ Reolink cameras: Rebroadcast + WebRTC + Snapshot + HomeKit + native AI motion
+4. ✅ CoreML enabled by: (a) enable `developerMode` on Video Analysis Plugin, (b) apply Video Analysis Plugin as a mixin to CoreML Object Detection, (c) apply CoreML Object Detection as a mixin to each RTSP camera
+5. ✅ Standalone HomeKit accessory mode enabled on each camera via `homekit:standalone=true`
 
-Still required (manual, one-time):
-- **HomeKit bridge**: pair in Home app — open `https://192.168.5.87:10443`, go to each camera → Extensions → HomeKit, copy the pairing PIN, add accessory in Home app
+Still required:
+- **Home app pairing**: open `https://192.168.5.87:10443`, go to each camera → Extensions → HomeKit, copy the pairing PIN, add accessory in Home
+
+### Repair Workflow for Existing Installs
+
+If RTSP cameras were already paired in Home before the correct mixin chain was present, Home may continue to show them without HKSV until the accessory is reset and re-paired.
+
+Use `scrypted_mixins.mjs` to repair an existing install:
+
+```bash
+scp scrypted_mixins.mjs sn@192.168.5.87:/tmp/
+ssh sn@192.168.5.87 'PATH=/opt/homebrew/opt/node@20/bin:$PATH node /tmp/scrypted_mixins.mjs'
+```
+
+This script:
+- Enables Video Analysis Plugin developer mode
+- Applies Video Analysis Plugin to CoreML Object Detection
+- Re-applies the correct RTSP camera mixins
+- Resets the HomeKit accessory state for RTSP cameras so they can be re-added in Home
 
 ---
 

@@ -1,8 +1,11 @@
 /**
  * Scrypted Camera Setup Script
  *
- * Adds all cameras to fresh native Scrypted install on Mac Mini M1.
- * Run via SSH: PATH=/opt/homebrew/opt/node@20/bin:$PATH node /tmp/scrypted_setup.mjs
+ * Adds all cameras to a fresh native Scrypted install on Mac Mini M1 and
+ * applies the required mixins for HomeKit Secure Video.
+ *
+ * Run via SSH:
+ *   PATH=/opt/homebrew/opt/node@20/bin:$PATH node /tmp/scrypted_setup.mjs
  *
  * Prerequisites:
  *   - Scrypted running natively at https://127.0.0.1:10443
@@ -69,14 +72,6 @@ const RTSP_CAMERAS = [
 //   which avoids this session overflow entirely.
 //   Motion/AI detection (person/vehicle/animal) continues to work via HTTP
 //   polling to the camera's port 80 API — independent of the RTSP video path.
-//
-// FUTURE: If @apocaliss92/scrypted-reolink-native adds session-count limits or
-// the camera firmware is updated to raise its Baichuan session cap, the camera
-// can be moved back to reolink-native. See commented-out block in REOLINK_CAMERAS.
-//
-// go2rtc streams must be added to go2rtc.yaml BEFORE running this script:
-//   garage_outside_camera_main: rtsp://admin:<password>@192.168.5.84:554/h264Preview_01_main
-//   garage_outside_camera_sub:  rtsp://admin:<password>@192.168.5.84:554/h264Preview_01_sub
 const GARAGE_OUTSIDE_CAMERA = {
   name: "Garage Outside Camera",
   url:  "rtsp://192.168.5.87:8554/garage_outside_camera_main",
@@ -85,22 +80,34 @@ const GARAGE_OUTSIDE_CAMERA = {
 };
 
 const REOLINK_CAMERAS = [
-  // ── Reolink doorbells (direct to camera via reolink-native, no go2rtc) ────
-  // Baichuan protocol: instant doorbell press events, two-way audio.
-  // AAC audio natively — no transcoding needed. Motion via camera onboard AI.
-  // Doorbell models have a standard 2-channel layout (main + sub) so Baichuan
-  // session count stays well within camera limits — no overflow issue.
   { name: "Courtyard Doorbell",      ip: "192.168.5.141" },
   { name: "Backyard Doorbell",       ip: "192.168.5.74" },
   { name: "Garage Outside Doorbell", ip: "192.168.5.163" },
-
-  // ── Garage Outside Camera — DISABLED (see above for why) ──────────────────
-  // Uncomment when reolink-native Baichuan session overflow is resolved:
-  // { name: "Garage Outside Camera", ip: "192.168.5.84" },
 ];
 
 async function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
+}
+
+async function applyRtspMixins(device, mixins) {
+  await device.setMixins([
+    mixins.rebroadcast.id,
+    mixins.webrtc.id,
+    mixins.snapshot.id,
+    mixins.homekit.id,
+    mixins.coreml.id,
+  ]);
+  await device.putSetting("homekit:standalone", true);
+}
+
+async function applyReolinkMixins(device, mixins) {
+  await device.setMixins([
+    mixins.rebroadcast.id,
+    mixins.webrtc.id,
+    mixins.snapshot.id,
+    mixins.homekit.id,
+  ]);
+  await device.putSetting("homekit:standalone", true);
 }
 
 async function main() {
@@ -115,30 +122,45 @@ async function main() {
   const sm = sdk.systemManager;
   console.log("Connected.\n");
 
-  const rtspPlugin    = sm.getDeviceByName("RTSP Camera Plugin");
+  const rtspPlugin = sm.getDeviceByName("RTSP Camera Plugin");
   const reolinkPlugin = sm.getDeviceByName("Reolink Camera Plugin");
   const reolinkNative = sm.getDeviceByName("Reolink Native");
+  const rebroadcast = sm.getDeviceByName("Rebroadcast Plugin");
+  const snapshot = sm.getDeviceByName("Snapshot Plugin");
+  const webrtc = sm.getDeviceByName("WebRTC Plugin");
+  const homekit = sm.getDeviceByName("HomeKit");
+  const coreml = sm.getDeviceByName("CoreML Object Detection");
+  const objectDetector = sm.getDeviceByName("Video Analysis Plugin");
 
-  if (!rtspPlugin)    throw new Error("RTSP Camera Plugin not found — is @scrypted/rtsp installed?");
+  if (!rtspPlugin) throw new Error("RTSP Camera Plugin not found — is @scrypted/rtsp installed?");
   if (!reolinkPlugin) throw new Error("Reolink Camera Plugin not found — is @scrypted/reolink installed?");
   if (!reolinkNative) throw new Error("Reolink Native not found — is @apocaliss92/scrypted-reolink-native installed?");
+  if (!rebroadcast) throw new Error("Rebroadcast Plugin not found — is @scrypted/prebuffer-mixin installed?");
+  if (!snapshot) throw new Error("Snapshot Plugin not found — is @scrypted/snapshot installed?");
+  if (!webrtc) throw new Error("WebRTC Plugin not found — is @scrypted/webrtc installed?");
+  if (!homekit) throw new Error("HomeKit not found — is @scrypted/homekit installed?");
+  if (!coreml) throw new Error("CoreML Object Detection not found — is @scrypted/coreml installed?");
+  if (!objectDetector) throw new Error("Video Analysis Plugin not found — is @scrypted/objectdetector installed?");
+
+  const mixins = { rebroadcast, snapshot, webrtc, homekit, coreml, objectDetector };
+
+  console.log("Enabling Video Analysis developer mode and linking it to CoreML ...");
+  await objectDetector.putSetting("developerMode", true);
+  await coreml.setMixins([objectDetector.id]);
 
   console.log(`RTSP Plugin ID: ${rtspPlugin.id}`);
   console.log(`Reolink Plugin ID: ${reolinkPlugin.id}`);
   console.log(`Reolink Native ID: ${reolinkNative.id}\n`);
 
-  // ── Add RTSP cameras (Hipcam + Wyze via go2rtc) ───────────────────────────
   console.log("=== Adding RTSP cameras (Hipcam + Wyze via go2rtc) ===");
   for (const cam of RTSP_CAMERAS) {
     try {
       const id = await rtspPlugin.createDevice({ name: cam.name, url: cam.url });
-      // createDevice does not persist the URL into settings — must set explicitly as array
       const device = sm.getDeviceById(id);
       await device.putSetting("urls", [cam.url]);
-      await sleep(10000); // plugin needs ~10s to process each URL change
-      // go2rtc JPEG snapshot: decouples snapshots from Scrypted's prebuffer —
-      // go2rtc caches the last frame independently so snapshots stay valid during
-      // prebuffer restarts (prevents black snapshot flashes in HomeKit).
+      await sleep(10000);
+      await applyRtspMixins(device, mixins);
+      await sleep(2000);
       const streamName = cam.url.split("/").pop();
       await device.putSetting("snapshot:snapshotUrl", `http://192.168.5.87:1984/api/stream.jpeg?src=${streamName}`);
       await device.putSetting("snapshot:snapshotsFromPrebuffer", "Disabled");
@@ -148,9 +170,6 @@ async function main() {
     }
   }
 
-  // ── Add Garage Outside Camera (@scrypted/reolink via go2rtc) ──────────────
-  // Uses go2rtc for stream stability + VideoToolbox transcoding for HomeKit.
-  // See GARAGE_OUTSIDE_CAMERA comment block above for full explanation.
   console.log("\n=== Adding Garage Outside Camera (@scrypted/reolink via go2rtc) ===");
   try {
     const id = await reolinkPlugin.createDevice({ name: GARAGE_OUTSIDE_CAMERA.name });
@@ -158,41 +177,31 @@ async function main() {
     await device.putSetting("urls", [GARAGE_OUTSIDE_CAMERA.url]);
     await sleep(10000);
 
-    // Add go2rtc sub stream as a synthetic stream for remote/low-res use
+    await applyReolinkMixins(device, mixins);
+    await sleep(2000);
+
     await device.putSetting("prebuffer:synthenticStreams", [
       GARAGE_OUTSIDE_CAMERA.url,
       GARAGE_OUTSIDE_CAMERA.sub,
     ]);
     await sleep(2000);
 
-    // Route all stream roles to go2rtc URLs
     const main = GARAGE_OUTSIDE_CAMERA.url;
-    const sub  = GARAGE_OUTSIDE_CAMERA.sub;
-    await device.putSetting("prebuffer:enabledStreams",        [main]);
-    await device.putSetting("prebuffer:defaultStream",         main);
-    await device.putSetting("prebuffer:remoteStream",          sub);
-    await device.putSetting("prebuffer:lowResolutionStream",   sub);
-    await device.putSetting("prebuffer:recordingStream",       main);
+    const sub = GARAGE_OUTSIDE_CAMERA.sub;
+    await device.putSetting("prebuffer:enabledStreams", [main]);
+    await device.putSetting("prebuffer:defaultStream", main);
+    await device.putSetting("prebuffer:remoteStream", sub);
+    await device.putSetting("prebuffer:lowResolutionStream", sub);
+    await device.putSetting("prebuffer:recordingStream", main);
     await device.putSetting("prebuffer:remoteRecordingStream", sub);
 
-    // VideoToolbox transcoding: camera outputs 2560x1440 H.264 High 5.1
-    // (profile-level-id=640033) which HomeKit does not accept.
-    // Scale to 1920x1080 and force High 4.0 (640028) via Apple GPU encoder.
-    await device.putSetting(`prebuffer:rtspParser-${main}`,            "FFmpeg (TCP)");
-    await device.putSetting(`prebuffer:ffmpegInputArguments-${main}`,  "-hwaccel videotoolbox");
+    await device.putSetting(`prebuffer:rtspParser-${main}`, "FFmpeg (TCP)");
+    await device.putSetting(`prebuffer:ffmpegInputArguments-${main}`, "-hwaccel videotoolbox");
     await device.putSetting(`prebuffer:ffmpegOutputArguments-${main}`, "-vf scale=1920:1080 -c:v h264_videotoolbox -b:v 4000k -profile:v high -level:v 4.0 -realtime 1 -c:a copy");
 
-    // Link synthetic streams to native stream codec metadata
     await device.putSetting(`prebuffer:syntheticInputIdKey-${main}`, "h264Preview_01_main");
-    await device.putSetting(`prebuffer:syntheticInputIdKey-${sub}`,  "h264Preview_01_sub");
+    await device.putSetting(`prebuffer:syntheticInputIdKey-${sub}`, "h264Preview_01_sub");
 
-    // Use go2rtc JPEG snapshot API instead of prebuffer snapshot.
-    // go2rtc keeps a persistent RTSP connection to the camera and caches the last frame.
-    // When Scrypted's FFmpeg pipeline restarts, go2rtc still serves the last good JPEG —
-    // preventing the black snapshot that appears during the FFmpeg restart window.
-    // Use camera's direct HTTP snapshot API — independent of RTSP/go2rtc state.
-    // go2rtc JPEG endpoint returns blank when no consumer is connected (prebuffer restart).
-    // Camera HTTP API always serves the latest JPEG regardless of RTSP connection status.
     const garageCamPass = encodeURIComponent(process.env.GARAGE_CAMERA_PASSWORD || "<garage-camera-password>");
     await device.putSetting("snapshot:snapshotUrl", `http://${GARAGE_OUTSIDE_CAMERA.ip}/cgi-bin/api.cgi?cmd=Snap&channel=0&user=admin&password=${garageCamPass}`);
     await device.putSetting("snapshot:snapshotsFromPrebuffer", "Disabled");
@@ -203,20 +212,6 @@ async function main() {
     console.log(`  ✗ Garage Outside Camera  — ${e.message}`);
   }
 
-  // ── Add Reolink doorbells (@apocaliss92/scrypted-reolink-native, direct) ──
-  // Also configures VideoToolbox transcoding prebuffer settings immediately after creation.
-  // Doorbells output H.264 High 5.1 (profile-level-id=640033, 2560x1920) which HomeKit
-  // does not support (HomeKit max = High 4.0 / 640028). Without this, HomeKit logs
-  // "h264 undefined" and kills sessions at 30s.
-  //
-  // Fix: force the RTSP main stream through FFmpeg VideoToolbox to scale + re-encode
-  // to 1280x960 High 4.0 @ 2Mbps.
-  //
-  // Key format: setting suffix is "h264Preview_01_main" (the RTSP stream path ID),
-  // NOT "RTSP main" (the display name). Wrong key = setting silently ignored.
-  //
-  // reolink-native bypasses FFmpeg for Baichuan/Native streams (channel_0_main/sub/ext).
-  // Only the RTSP main stream uses FFmpeg. Baichuan still handles audio, events, doorbell press.
   console.log("\n=== Adding Reolink doorbells (direct via reolink-native) ===");
   const DOORBELL_RTSP_KEY = "h264Preview_01_main";
   for (const cam of REOLINK_CAMERAS) {
@@ -230,17 +225,18 @@ async function main() {
       console.log(`  ✓ ${cam.name}  (id=${id})`);
       await sleep(500);
 
-      // Configure VideoToolbox transcoding for HomeKit via RTSP main stream.
       const device = sm.getDeviceById(id);
-      await device.putSetting("prebuffer:enabledStreams",  ["RTSP main"]);
-      await device.putSetting("prebuffer:defaultStream",   "RTSP main");
-      await device.putSetting("prebuffer:remoteStream",    "RTSP main");
+      await applyReolinkMixins(device, mixins);
+      await sleep(1000);
+
+      await device.putSetting("prebuffer:enabledStreams", ["RTSP main"]);
+      await device.putSetting("prebuffer:defaultStream", "RTSP main");
+      await device.putSetting("prebuffer:remoteStream", "RTSP main");
       await device.putSetting("prebuffer:recordingStream", "RTSP main");
       await sleep(1000);
-      await device.putSetting(`prebuffer:rtspParser-${DOORBELL_RTSP_KEY}`,            "FFmpeg (TCP)");
-      await device.putSetting(`prebuffer:ffmpegInputArguments-${DOORBELL_RTSP_KEY}`,  "-hwaccel videotoolbox");
+      await device.putSetting(`prebuffer:rtspParser-${DOORBELL_RTSP_KEY}`, "FFmpeg (TCP)");
+      await device.putSetting(`prebuffer:ffmpegInputArguments-${DOORBELL_RTSP_KEY}`, "-hwaccel videotoolbox");
       await device.putSetting(`prebuffer:ffmpegOutputArguments-${DOORBELL_RTSP_KEY}`, "-vf scale=1280:960 -c:v h264_videotoolbox -b:v 2000k -profile:v high -level:v 4.0 -realtime 1 -c:a copy");
-      // Doorbells are direct (no go2rtc) — use camera's HTTP JPEG snapshot API directly.
       const pass = process.env.REOLINK_PASSWORD || "<reolink-password>";
       await device.putSetting("snapshot:snapshotUrl", `http://${cam.ip}/cgi-bin/api.cgi?cmd=Snap&channel=0&user=admin&password=${encodeURIComponent(pass)}`);
       await device.putSetting("snapshot:snapshotsFromPrebuffer", "Disabled");
@@ -251,13 +247,8 @@ async function main() {
   }
 
   console.log("\n=== Done ===");
-  console.log("Next steps (in Scrypted UI https://192.168.5.87:10443):");
-  console.log("  1. For each Hipcam + Wyze camera: add mixins → Rebroadcast, Snapshot, Video Analysis (CoreML), HomeKit");
-  console.log("  2. In Video Analysis mixin: set Detection Model = CoreML");
-  console.log("  3. Garage Outside Camera: add mixins → Rebroadcast, Snapshot, HomeKit");
-  console.log("  4. For each Reolink doorbell: add mixins → Rebroadcast, Snapshot, HomeKit");
-  console.log("     (Prebuffer VideoToolbox transcoding settings are pre-applied by this script)");
-  console.log("  5. Pair HomeKit bridge in Home app");
+  console.log("Next step (in Home app):");
+  console.log("  Pair each camera using the HomeKit PIN from Scrypted.");
 
   sdk.disconnect();
   process.exit(0);
