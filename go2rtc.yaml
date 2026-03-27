@@ -123,19 +123,24 @@ streams:
   living_room_camera_sub:  wyze://192.168.5.62?dtls=true&enr=gvnv3V%2FieXQ3b%2FTb&mac=D03F2798D5B3&model=HL_CAM3P&uid=Z6A8GPTL2HBJM1X1111A&quality=sd
 
   # Front Door — Wyze Cam Pan v3 (HL_PAN3, 192.168.5.177)
-  # Switched from wyze:// P2P to direct RTSP — P2P had cloud discovery timeouts
-  # RTSP enabled in Wyze app (Settings → Advanced Settings → RTSP)
-  # Credentials: ra8844 / Egypti@n1975 (@ URL-encoded as %40)
-  # ffmpeg source required: camera SDP sends audio as track 0, video as track 1
-  # (go2rtc native RTSP only picks up audio when order is reversed)
+  # Using wyze:// P2P (switched back from direct RTSP)
   front_door_camera_main:
-  - ffmpeg:rtsp://ra8844:Egypti%40n1975@192.168.5.177:554/stream0#video=copy#audio=copy
+  - wyze://192.168.5.177?dtls=true&enr=LXpAWo3xT%2Bs4ettg&mac=D03F27BCCA2D&model=HL_PAN3&uid=6LZN32SM98X9ULWF111A&quality=hd
   - ffmpeg:front_door_camera_main#audio=opus
-  front_door_camera_sub:  rtsp://ra8844:Egypti%40n1975@192.168.5.177:554/stream1
+  front_door_camera_sub:  wyze://192.168.5.177?dtls=true&enr=LXpAWo3xT%2Bs4ettg&mac=D03F27BCCA2D&model=HL_PAN3&uid=6LZN32SM98X9ULWF111A&quality=sd
 
   # -------------------------------------------------------
   # Other cameras
   # -------------------------------------------------------
+
+  # -------------------------------------------------------
+  # Reolink cameras (direct RTSP — no go2rtc audio transcoding needed,
+  # Scrypted handles transcoding via h264_videotoolbox for HomeKit)
+  # -------------------------------------------------------
+
+  # Garage Outside Camera — Reolink RLC-823A 16X (192.168.5.84)
+  garage_outside_camera_main: rtsp://admin:Egyptian1975@192.168.5.84:554/h264Preview_01_main
+  garage_outside_camera_sub:  rtsp://admin:Egyptian1975@192.168.5.84:554/h264Preview_01_sub
 
   # Eufy garage camera (192.168.5.179)
   eufy_garage_camera_1_main: rtsp://Sharif_Nassar275:Egyptian_0221975@192.168.5.179/live0

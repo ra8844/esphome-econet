@@ -8,11 +8,13 @@ Cameras are split across two systems:
 
 **go2rtc** runs natively on the Mac Mini M1 (`192.168.5.87`) as a stream rebroadcaster and protocol bridge. It handles Wyze P2P (`wyze://`), ONVIF, and RTSP sources and rebroadcasts them as RTSP for HA and Scrypted.
 
-**Scrypted** runs natively on the Mac Mini M1 as a LaunchAgent. It handles HomeKit Secure Video and uses CoreML (M1 Neural Engine) for Wyze motion detection on go2rtc RTSP streams.
+**Scrypted** runs natively on the Mac Mini M1 as a LaunchAgent. It handles HomeKit Secure Video and uses CoreML (M1 Neural Engine) for Wyze/ONVIF motion detection on go2rtc RTSP streams.
 
 **wyze-bridge is not used.** go2rtc handles Wyze P2P natively via `wyze://` and rebroadcasts as RTSP to both HA and Scrypted.
 
-**@apocaliss92/scrypted-reolink-native** connects directly to Reolink cameras (not via go2rtc) for HKSV and HomeKit streaming.
+**@apocaliss92/scrypted-reolink-native** connects directly to Reolink doorbells (not via go2rtc) for HKSV, doorbell press events, and two-way audio.
+
+**@scrypted/reolink** connects the Garage Outside Camera via go2rtc RTSP. See the Garage Outside Camera section below for why this camera cannot use reolink-native.
 
 ---
 
@@ -21,14 +23,25 @@ Cameras are split across two systems:
 ```
 Camera Hardware
       │
-      ├─── Reolink cameras/doorbells ──────────────┬─► HA (native Reolink integration, direct)
-      │                                             │         camera URL + motion/person/vehicle/PTZ
-      │                                             │
-      │                                             └─► Scrypted (Reolink Native Plugin, direct)
-      │                                                       │
+      ├─── Reolink doorbells (3) ──────────────────┬─► HA (native Reolink integration, direct)
+      │     Courtyard, Backyard,                    │         camera entity + motion/person/vehicle/PTZ
+      │     Garage Outside Doorbell                 │
+      │                                             └─► Scrypted (reolink-native plugin, direct)
+      │                                                       │   Baichuan protocol — instant doorbell
+      │                                                       │   press events, two-way audio
       │                                                       └─► HomeKit (HKSV + doorbell + 2-way audio)
       │
-      ├─── Hipcam Knockoff cameras (port 8080) ──────► go2rtc (single producer — ONVIF → RTSP + Opus)
+      ├─── Garage Outside Camera ──────────────────► go2rtc (persistent RTSP → local rebroadcast)
+      │     RLC-823A 16X (192.168.5.84)                       │   Prevents RTSP reconnect delay after
+      │     [uses @scrypted/reolink — see note]               │   ffmpeg crash (camera refuses 15-20s)
+      │                                                        │
+      │                                                        └─► Scrypted (@scrypted/reolink plugin)
+      │                                                                  │   HTTP polling for AI motion
+      │                                                                  │   FFmpeg VideoToolbox transcode
+      │                                                                  │   2560x1440→1920x1080 (High 4.0)
+      │                                                                  └─► HomeKit (HKSV + motion)
+      │
+      ├─── Hipcam Knockoff cameras (8) ───────────► go2rtc (single producer — ONVIF → RTSP + Opus)
       │                                                       │
       │                                                       ├─► HA (WebRTC/RTSP for dashboard)
       │                                                       │
@@ -36,10 +49,9 @@ Camera Hardware
       │                                                                 │
       │                                                                 ├─► CoreML (M1 Neural Engine)
       │                                                                 │         motion detection
-      │                                                                 │
       │                                                                 └─► HomeKit (HKSV + motion)
       │
-      ├─── Wyze cameras ───────────────────────────► go2rtc (wyze:// P2P → RTSP rebroadcast)
+      ├─── Wyze cameras (2) ───────────────────────► go2rtc (wyze:// P2P → RTSP rebroadcast)
       │                                                       │
       │                                                       ├─► HA (RTSP stream for dashboard)
       │                                                       │
@@ -47,7 +59,6 @@ Camera Hardware
       │                                                                 │
       │                                                                 ├─► CoreML (M1 Neural Engine)
       │                                                                 │         motion detection
-      │                                                                 │
       │                                                                 └─► HomeKit (HKSV + motion)
       │
       ├─── Eufy garage camera ─────────────────────► go2rtc (RTSP source)
@@ -62,32 +73,81 @@ Camera Hardware
 
 ## Camera Inventory
 
-### Reolink Cameras (4 total)
+### Reolink Doorbells (3 total) — @apocaliss92/scrypted-reolink-native
 
-| Camera | Location | Type | IP | Scrypted ID |
-|--------|----------|------|----|-------------|
-| Courtyard Doorbell | Front courtyard | Reolink Doorbell | 192.168.5.141 | 48 |
-| Backyard Doorbell | Backyard | Reolink Doorbell | 192.168.5.163 | 59 |
-| Garage Outside Doorbell | Garage exterior | Reolink Doorbell | 192.168.5.74 | 53 |
-| Garage Outside Camera | Garage | Reolink PTZ | 192.168.5.84 | 64 |
+| Camera | Location | IP | Scrypted ID |
+|--------|----------|----|-------------|
+| Courtyard Doorbell | Front courtyard | 192.168.5.141 | 48 |
+| Backyard Doorbell | Backyard | 192.168.5.163 | 59 |
+| Garage Outside Doorbell | Garage exterior | 192.168.5.74 | 53 |
 
 **Credentials:** username `admin` (see local credentials store)
 
-**HA:** Native Reolink integration — connects directly to camera via camera URL + HTTP API
-- Provides: camera entity (live stream), motion, person/vehicle/pet/visitor detection, PTZ control, siren, floodlight
+**HA:** Native Reolink integration — connects directly to camera
+- Provides: camera entity, motion, person/vehicle/pet/visitor detection, siren, floodlight
 
-**Scrypted:** `@apocaliss92/scrypted-reolink-native` plugin — connects **directly to camera** (not via go2rtc)
-- Provides: HKSV recording, doorbell press notifications, two-way audio in Home app
-- Each camera/doorbell is a standalone HomeKit accessory
+**Scrypted:** `@apocaliss92/scrypted-reolink-native` — connects **directly to camera** via Baichuan protocol
+- Baichuan push: instant doorbell press events (no polling delay)
+- Two-way audio in Home app
+- Motion/AI detection via camera onboard AI (person/vehicle/animal)
+- Each doorbell is a standalone HomeKit accessory
 
 **HomeKit pairing PINs (standalone accessories):**
 
 | Camera | PIN |
 |--------|-----|
-| Garage Outside Camera | TBD (fresh install 2026-03-25) |
 | Garage Outside Doorbell | TBD |
 | Backyard Doorbell | TBD |
 | Courtyard Doorbell | TBD |
+
+---
+
+### Garage Outside Camera — @scrypted/reolink via go2rtc
+
+| Camera | Location | Model | IP | Scrypted ID |
+|--------|----------|-------|----|-------------|
+| Garage Outside Camera | Garage exterior | Reolink RLC-823A 16X | 192.168.5.84 | 75 |
+
+**Credentials:** username `admin` (see local credentials store)
+
+**HA:** Native Reolink integration — connects directly to camera
+
+**Scrypted:** `@scrypted/reolink` plugin — connects via **go2rtc RTSP rebroadcast** (not direct to camera)
+- go2rtc streams: `rtsp://192.168.5.87:8554/garage_outside_camera_main` / `_sub`
+- Motion/AI detection via HTTP polling to camera port 80 (independent of RTSP video path)
+- FFmpeg VideoToolbox transcoding: 2560x1440 H.264 High 5.1 → 1920x1080 H.264 High 4.0 for HomeKit
+- Standalone HomeKit accessory
+
+**Why @scrypted/reolink instead of reolink-native:**
+
+The RLC-823A 16X has a large number of channels (main, sub, ext, plus 16× optical zoom channel).
+`@apocaliss92/scrypted-reolink-native` uses the Baichuan binary protocol, which opens multiple
+concurrent sessions per camera (video, audio, motion, PTZ, AI events). The session count on this
+camera exceeds the firmware's limit, causing it to enter a continuous reboot loop.
+
+`@scrypted/reolink` uses RTMP/RTSP for video and HTTP polling for AI events, keeping the session
+count within limits. Motion detection (person/vehicle/animal) continues to work via HTTP polling
+to port 80 — this is independent of the RTSP video stream path.
+
+**Why go2rtc instead of direct RTSP:**
+
+The camera outputs 2560x1440 H.264 High 5.1 (`profile-level-id=640033`). HomeKit requires
+H.264 High 4.0 (`profile-level-id=640028`) or lower. Scrypted must transcode via ffmpeg
+(`h264_videotoolbox` on M1 GPU). After any ffmpeg crash, the camera refuses new RTSP connections
+on port 554 for 15-20 seconds while cleaning up the previous session. HomeKit's 30-second session
+timeout expires during this reconnect window. go2rtc maintains a persistent RTSP connection to
+the camera and rebroadcasts locally — ffmpeg reconnects to go2rtc in milliseconds rather than
+waiting for the camera.
+
+**Future:** If reolink-native adds Baichuan session-count limits or the camera firmware raises
+its session cap, this camera can move to reolink-native. The commented-out entry in
+`scrypted_setup.mjs` (`REOLINK_CAMERAS`) documents how to do this.
+
+**HomeKit pairing PIN:**
+
+| Camera | PIN |
+|--------|-----|
+| Garage Outside Camera | TBD |
 
 ---
 
@@ -273,8 +333,9 @@ launchctl load ~/Library/LaunchAgents/com.go2rtc.keepalive.plist
 - **Logs:** `/tmp/scrypted.log`
 - **Restart:** `launchctl stop com.scrypted` (launchd auto-restarts due to KeepAlive)
 - **Plugins installed:**
-  - `@scrypted/rtsp` — ONVIF cameras (via go2rtc RTSP) + Wyze cameras (via go2rtc RTSP)
-  - `@apocaliss92/scrypted-reolink-native` — Reolink cameras/doorbells (direct to camera, not via go2rtc)
+  - `@scrypted/rtsp` — Hipcam ONVIF cameras (via go2rtc RTSP) + Wyze cameras (via go2rtc RTSP)
+  - `@scrypted/reolink` — Garage Outside Camera (via go2rtc RTSP; reolink-native causes Baichuan session overflow on this model)
+  - `@apocaliss92/scrypted-reolink-native` — Reolink doorbells (direct to camera, Baichuan push for instant doorbell events)
   - `@scrypted/homekit` — HomeKit bridge
   - `@scrypted/coreml` — Apple Silicon CoreML / M1 Neural Engine object detection (Wyze + ONVIF motion)
   - `@scrypted/objectdetector` — Video Analysis Plugin (paired with CoreML for Wyze + ONVIF)
@@ -305,7 +366,8 @@ launchctl load ~/Library/LaunchAgents/com.go2rtc.keepalive.plist
 
 | Camera Type | Motion Source | HomeKit / HKSV | M1 GPU |
 |-------------|--------------|----------------|--------|
-| Reolink | HA native Reolink integration (person/vehicle/pet/visitor) | ✅ Scrypted reolink-native → HKSV | ✅ VideoToolbox — HKSV encode |
+| Reolink doorbells | Camera onboard AI via Baichuan push (person/vehicle/pet/visitor, instant) | ✅ reolink-native → HKSV | ✅ VideoToolbox — HKSV encode |
+| Garage Outside Camera | Camera onboard AI via HTTP polling port 80 (person/vehicle/animal) | ✅ @scrypted/reolink → HKSV | ✅ VideoToolbox — transcode + HKSV encode |
 | Hipcam Knockoff | CoreML via go2rtc RTSP (M1 Neural Engine — dedicated, no CPU competition) | ✅ Scrypted RTSP + CoreML → HKSV | ✅ Neural Engine (motion) + VideoToolbox (HKSV encode) — parallel hardware |
 | Wyze | CoreML via go2rtc RTSP (M1 Neural Engine — dedicated, no CPU competition) | ✅ Scrypted CoreML → HKSV | ✅ Neural Engine (motion) + VideoToolbox (HKSV encode) — parallel hardware |
 | Eufy | TBD | TBD | TBD |
@@ -314,7 +376,9 @@ launchctl load ~/Library/LaunchAgents/com.go2rtc.keepalive.plist
 
 ## Key Design Decisions
 
-1. **Reolink: both HA and Scrypted connect directly (no go2rtc)** — HA native Reolink integration and Scrypted reolink-native plugin both connect directly to cameras. Reolink cameras output AAC audio natively — no audio transcoding needed, so go2rtc is not required. M1 VideoToolbox used by Scrypted for HKSV encoding same as all cameras.
+1. **Reolink doorbells: direct connection (no go2rtc)** — HA native Reolink integration and Scrypted reolink-native plugin both connect directly to the doorbells. Reolink cameras output AAC audio natively — no audio transcoding needed. Baichuan protocol gives instant doorbell press events and two-way audio. Doorbell models have a simple 2-channel layout that stays within Baichuan session limits.
+
+1a. **Garage Outside Camera (RLC-823A 16X): go2rtc + @scrypted/reolink** — This specific camera model cannot use reolink-native because its many channels (main/sub/ext/16× zoom) push the Baichuan session count over the firmware limit, causing a reboot loop. Uses `@scrypted/reolink` (HTTP + RTSP) instead. go2rtc is required because the camera's H.264 High 5.1 output must be transcoded to High 4.0 for HomeKit and the direct RTSP reconnect delay after ffmpeg crashes exceeds HomeKit's session timeout. See the Garage Outside Camera section for full details.
 
 2. **Hipcam Knockoff: go2rtc as single producer** — go2rtc makes one ONVIF connection per camera, transcodes PCMA → Opus (CPU, via ffmpeg), rebroadcasts RTSP to both HA (WebRTC) and Scrypted (RTSP plugin). One connection protects cheap cameras from multiple simultaneous connections. go2rtc on M1 handles all 8 cameras efficiently.
 
@@ -425,10 +489,11 @@ The Video Analysis Plugin (device 9) does NOT directly mixin cameras. Its archit
 | Office Camera | 45 | |
 | Living Room Camera (Wyze) | 46 | |
 | Front Door Camera (Wyze) | 47 | |
-| Courtyard Doorbell (Reolink) | 48 | |
-| Garage Outside Doorbell (Reolink) | 53 | |
-| Backyard Doorbell (Reolink) | 59 | |
-| Garage Outside Camera (Reolink) | 64 | |
+| Courtyard Doorbell (Reolink) | 48 | @apocaliss92/scrypted-reolink-native |
+| Garage Outside Doorbell (Reolink) | 53 | @apocaliss92/scrypted-reolink-native |
+| Backyard Doorbell (Reolink) | 59 | @apocaliss92/scrypted-reolink-native |
+| Reolink Camera Plugin | 74 | @scrypted/reolink |
+| Garage Outside Camera | 75 | @scrypted/reolink |
 
 ### Remaining Manual Steps
 
@@ -474,6 +539,50 @@ Wyze Camera → go2rtc (wyze:// P2P) → RTSP rtsp://192.168.5.87:8554/<cam>_mai
 - **ONVIF camera IPs**: `/Users/sn/docker/go2rtc.yaml` on Mac Mini
 - **Reolink camera IPs**: HA Reolink integration (192.168.5.182)
 - **Wyze RTSP URLs**: `rtsp://192.168.5.87:8554/living_room_camera_main`, `rtsp://192.168.5.87:8554/front_door_camera_main`
+
+---
+
+## Session Log: 2026-03-27 — Garage Outside Camera: reolink-native → @scrypted/reolink + go2rtc
+
+### Problem
+
+The Garage Outside Camera (Reolink RLC-823A 16X, 192.168.5.84) was stuck in a continuous reboot
+loop when managed by `@apocaliss92/scrypted-reolink-native`. Root cause: the RLC-823A 16X has
+many channels (main, sub, ext, plus 16× optical zoom channel), causing the Baichuan session
+count to exceed the camera firmware's limit. The camera interprets this as an attack and reboots.
+
+### Solution
+
+1. **Switched to `@scrypted/reolink`** — uses RTMP/RTSP for video and HTTP polling for AI events,
+   no Baichuan sessions. Reboot loop stopped immediately.
+
+2. **Added camera to go2rtc** as `garage_outside_camera_main` / `_sub`. go2rtc maintains a
+   persistent RTSP connection so Scrypted reconnects in milliseconds after any ffmpeg crash
+   (vs 15-20s "Connection refused" when connecting directly to the camera).
+
+3. **Configured FFmpeg VideoToolbox transcoding** — camera outputs 2560x1440 H.264 High 5.1
+   (`profile-level-id=640033`). HomeKit requires High 4.0 max. FFmpeg output args set to:
+   `-vf scale=1920:1080 -c:v h264_videotoolbox -b:v 4000k -profile:v high -level:v 4.0 -realtime 1 -c:a copy`
+
+4. **All configuration done programmatically** via `@scrypted/client` SDK (no UI clicks).
+
+### Key Technical Details
+
+- **FU-A fragmentation fix**: RTSP parser set to "FFmpeg (TCP)" — Scrypted's native parser fails
+  to reassemble large H.264 High profile NAL units from this camera's 2.5K stream.
+- **Rebroadcast port 0**: Auto-assign prevents EADDRINUSE on port 49498 after plugin restart.
+- **Synthetic streams**: go2rtc RTSP URLs added as `prebuffer:synthenticStreams` (note typo in
+  Scrypted's API key). This makes them available in the stream selector dropdowns.
+- **syntheticInputIdKey**: Maps go2rtc streams to native stream codec metadata so Scrypted knows
+  the codec without probing the go2rtc URL separately.
+- **Motion detection unaffected**: `@scrypted/reolink` polls `http://192.168.5.84:80` for AI
+  events independently of the RTSP video path — switching to go2rtc for video does not change
+  how motion/person/vehicle detection works.
+
+### Scrypted Device IDs After This Change
+
+Old (reolink-native): Garage Outside Camera = ID 64 (deleted due to reboot loop)
+New (@scrypted/reolink): Reolink Camera Plugin = ID 74, Garage Outside Camera = ID 75
 
 ---
 
