@@ -78,8 +78,8 @@ Camera Hardware
 | Camera | Location | IP | Scrypted ID |
 |--------|----------|----|-------------|
 | Courtyard Doorbell | Front courtyard | 192.168.5.141 | 48 |
-| Backyard Doorbell | Backyard | 192.168.5.163 | 59 |
-| Garage Outside Doorbell | Garage exterior | 192.168.5.74 | 53 |
+| Backyard Doorbell | Backyard | 192.168.5.74 | 59 |
+| Garage Outside Doorbell | Garage exterior | 192.168.5.163 | 53 |
 
 **Credentials:** username `admin` (see local credentials store)
 
@@ -91,6 +91,28 @@ Camera Hardware
 - Two-way audio in Home app
 - Motion/AI detection via camera onboard AI (person/vehicle/animal)
 - Each doorbell is a standalone HomeKit accessory
+
+**HomeKit video transcoding (VideoToolbox):**
+
+Reolink doorbells output H.264 High 5.1 (`profile-level-id=640033`, 2560x1920). HomeKit's maximum
+is High 4.0 (`640028`). Without transcoding, HomeKit logs `h264 undefined` and kills streaming
+sessions at the 30-second timeout.
+
+Fix: the Rebroadcast (prebuffer) mixin is configured to force the RTSP main stream through FFmpeg
+with Apple VideoToolbox GPU encoding:
+- Input: `rtsp://camera:554/h264Preview_01_main` via FFmpeg TCP
+- Input args: `-hwaccel videotoolbox`
+- Output args: `-vf scale=1280:960 -c:v h264_videotoolbox -b:v 2000k -profile:v high -level:v 4.0 -realtime 1 -c:a copy`
+- Result: 1280x960 H.264 High 4.0 @ 2Mbps — HomeKit compatible
+
+**Setting key format:** The prebuffer uses the RTSP path ID as the setting suffix (`h264Preview_01_main`),
+**not** the display name (`RTSP main`). Using the wrong suffix causes the setting to be silently ignored.
+
+**Baichuan streams unaffected:** reolink-native bypasses FFmpeg entirely for Baichuan/Native streams
+(`channel_0_main/sub/ext`). Only the RTSP main stream uses FFmpeg. Doorbell press events, two-way
+audio, and AI motion events continue via Baichuan uninterrupted.
+
+These settings are automatically applied by `scrypted_setup.mjs` at camera creation time.
 
 **HomeKit pairing PINs (standalone accessories):**
 

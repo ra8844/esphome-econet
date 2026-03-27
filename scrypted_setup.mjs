@@ -90,8 +90,8 @@ const REOLINK_CAMERAS = [
   // Doorbell models have a standard 2-channel layout (main + sub) so Baichuan
   // session count stays well within camera limits — no overflow issue.
   { name: "Courtyard Doorbell",      ip: "192.168.5.141" },
-  { name: "Backyard Doorbell",       ip: "192.168.5.163" },
-  { name: "Garage Outside Doorbell", ip: "192.168.5.74" },
+  { name: "Backyard Doorbell",       ip: "192.168.5.74" },
+  { name: "Garage Outside Doorbell", ip: "192.168.5.163" },
 
   // ── Garage Outside Camera — DISABLED (see above for why) ──────────────────
   // Uncomment when reolink-native Baichuan session overflow is resolved:
@@ -186,7 +186,21 @@ async function main() {
   }
 
   // ── Add Reolink doorbells (@apocaliss92/scrypted-reolink-native, direct) ──
+  // Also configures VideoToolbox transcoding prebuffer settings immediately after creation.
+  // Doorbells output H.264 High 5.1 (profile-level-id=640033, 2560x1920) which HomeKit
+  // does not support (HomeKit max = High 4.0 / 640028). Without this, HomeKit logs
+  // "h264 undefined" and kills sessions at 30s.
+  //
+  // Fix: force the RTSP main stream through FFmpeg VideoToolbox to scale + re-encode
+  // to 1280x960 High 4.0 @ 2Mbps.
+  //
+  // Key format: setting suffix is "h264Preview_01_main" (the RTSP stream path ID),
+  // NOT "RTSP main" (the display name). Wrong key = setting silently ignored.
+  //
+  // reolink-native bypasses FFmpeg for Baichuan/Native streams (channel_0_main/sub/ext).
+  // Only the RTSP main stream uses FFmpeg. Baichuan still handles audio, events, doorbell press.
   console.log("\n=== Adding Reolink doorbells (direct via reolink-native) ===");
+  const DOORBELL_RTSP_KEY = "h264Preview_01_main";
   for (const cam of REOLINK_CAMERAS) {
     try {
       const id = await reolinkNative.createDevice({
@@ -196,6 +210,18 @@ async function main() {
         password: process.env.REOLINK_PASSWORD || "<reolink-password>",
       });
       console.log(`  ✓ ${cam.name}  (id=${id})`);
+      await sleep(500);
+
+      // Configure VideoToolbox transcoding for HomeKit via RTSP main stream.
+      const device = sm.getDeviceById(id);
+      await device.putSetting("prebuffer:enabledStreams",  ["RTSP main"]);
+      await device.putSetting("prebuffer:defaultStream",   "RTSP main");
+      await device.putSetting("prebuffer:remoteStream",    "RTSP main");
+      await device.putSetting("prebuffer:recordingStream", "RTSP main");
+      await sleep(1000);
+      await device.putSetting(`prebuffer:rtspParser-${DOORBELL_RTSP_KEY}`,            "FFmpeg (TCP)");
+      await device.putSetting(`prebuffer:ffmpegInputArguments-${DOORBELL_RTSP_KEY}`,  "-hwaccel videotoolbox");
+      await device.putSetting(`prebuffer:ffmpegOutputArguments-${DOORBELL_RTSP_KEY}`, "-vf scale=1280:960 -c:v h264_videotoolbox -b:v 2000k -profile:v high -level:v 4.0 -realtime 1 -c:a copy");
       await sleep(500);
     } catch (e) {
       console.log(`  ✗ ${cam.name}  — ${e.message}`);
@@ -208,6 +234,7 @@ async function main() {
   console.log("  2. In Video Analysis mixin: set Detection Model = CoreML");
   console.log("  3. Garage Outside Camera: add mixins → Rebroadcast, Snapshot, HomeKit");
   console.log("  4. For each Reolink doorbell: add mixins → Rebroadcast, Snapshot, HomeKit");
+  console.log("     (Prebuffer VideoToolbox transcoding settings are pre-applied by this script)");
   console.log("  5. Pair HomeKit bridge in Home app");
 
   sdk.disconnect();
