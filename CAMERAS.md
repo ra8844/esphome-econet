@@ -6,15 +6,15 @@ Cameras are split across two systems:
 - **Home Assistant (HA)** — motion/event recording, automations, entity sensors, native Reolink integration
 - **Scrypted** — HomeKit Secure Video (HKSV), HomeKit streaming, hardware transcoding, CoreML motion (Wyze + ONVIF)
 
-**go2rtc** runs natively on the Mac Mini M1 (`192.168.5.87`) as a stream rebroadcaster and protocol bridge. It handles Wyze P2P (`wyze://`), ONVIF, and RTSP sources and rebroadcasts them as RTSP for HA and Scrypted.
+**go2rtc** runs natively on the Mac Mini M1 (`192.168.1.85`) as a stream rebroadcaster and protocol bridge. It primarily handles Wyze P2P (`wyze://`) plus a small set of direct RTSP sources that still need rebroadcasting for Home Assistant or Scrypted.
 
-**Scrypted** runs natively on the Mac Mini M1 as a LaunchAgent. It handles HomeKit Secure Video and uses CoreML (M1 Neural Engine) for Wyze/ONVIF motion detection on go2rtc RTSP streams.
+**Scrypted** runs natively on the Mac Mini M1 as a LaunchAgent. It handles HomeKit Secure Video, uses direct ONVIF for the non-Reolink cameras that expose ONVIF-T motion, and uses CoreML (M1 Neural Engine) for Wyze motion detection on go2rtc RTSP streams.
 
 **wyze-bridge is not used.** go2rtc handles Wyze P2P natively via `wyze://` and rebroadcasts as RTSP to both HA and Scrypted.
 
 **@apocaliss92/scrypted-reolink-native** connects directly to Reolink doorbells (not via go2rtc) for HKSV, doorbell press events, and two-way audio.
 
-**@scrypted/reolink** connects the Garage Outside Camera via go2rtc RTSP. See the Garage Outside Camera section below for why this camera cannot use reolink-native.
+**@scrypted/reolink** connects the Garage Outside Camera directly. See the Garage Outside Camera section below for why this camera cannot use reolink-native.
 
 ---
 
@@ -31,15 +31,11 @@ Camera Hardware
       │                                                       │   press events, two-way audio
       │                                                       └─► HomeKit (HKSV + doorbell + 2-way audio)
       │
-      ├─── Garage Outside Camera ──────────────────► go2rtc (persistent RTSP → local rebroadcast)
-      │     RLC-823A 16X (192.168.5.84)                       │   Prevents RTSP reconnect delay after
-      │     [uses @scrypted/reolink — see note]               │   ffmpeg crash (camera refuses 15-20s)
-      │                                                        │
-      │                                                        └─► Scrypted (@scrypted/reolink plugin)
-      │                                                                  │   HTTP polling for AI motion
-      │                                                                  │   FFmpeg VideoToolbox transcode
-      │                                                                  │   2560x1440→1920x1080 (High 4.0)
-      │                                                                  └─► HomeKit (HKSV + motion)
+      ├─── Garage Outside Camera ──────────────────► Scrypted (@scrypted/reolink plugin, direct)
+      │     RLC-823A 16X (192.168.5.84)                       │   HTTP polling for AI motion
+      │     [uses @scrypted/reolink — see note]               │   FFmpeg VideoToolbox transcode
+      │                                                       │   2560x1440→1920x1080 (High 4.0)
+      │                                                       └─► HomeKit (HKSV + motion)
       │
       ├─── Hipcam Knockoff cameras (8) ───────────► go2rtc (single producer — ONVIF → RTSP + Opus)
       │                                                       │
@@ -53,17 +49,21 @@ Camera Hardware
       │
       ├─── Wyze cameras (2) ───────────────────────► go2rtc (wyze:// P2P → RTSP rebroadcast)
       │                                                       │
-      │                                                       ├─► HA (RTSP stream for dashboard)
+      │                                                       ├─► Scrypted (RTSP Plugin)
       │                                                       │
-      │                                                       └─► Scrypted (RTSP Plugin)
+      │                                                       └─► Synology Surveillance Station
+      │                                                                 ▲
+      │                                                                 │   Rebroadcast URL from Scrypted
       │                                                                 │
-      │                                                                 ├─► CoreML (M1 Neural Engine)
-      │                                                                 │         motion detection
+      │                                                       Scrypted Synology plugin
+      │                                                                 │   Brings stream + motion
+      │                                                                 │   back into Scrypted
       │                                                                 └─► HomeKit (HKSV + motion)
       │
-      ├─── Eufy garage camera ─────────────────────► go2rtc (RTSP source)
-      │         [Scrypted/HomeKit: pending]                   │
-      │                                                       └─► Scrypted (RTSP Plugin) [pending]
+      ├─── Eufy garage camera ─────────────────────► go2rtc (RTSP source for HA)
+      │
+      │                                                       Eufy + HomeBase
+      │                                                                 └─► HomeKit (HKSV + motion)
       │
       └─── Front doorbell (August) ────────────────► go2rtc (RTSP source)
                 [ON HOLD — connectivity issues]
@@ -125,7 +125,7 @@ These settings are automatically applied by `scrypted_setup.mjs` at camera creat
 
 ---
 
-### Garage Outside Camera — @scrypted/reolink via go2rtc
+### Garage Outside Camera — @scrypted/reolink direct to camera
 
 | Camera | Location | Model | IP | Scrypted ID |
 |--------|----------|-------|----|-------------|
@@ -135,11 +135,11 @@ These settings are automatically applied by `scrypted_setup.mjs` at camera creat
 
 **HA:** Native Reolink integration — connects directly to camera
 
-**Scrypted:** `@scrypted/reolink` plugin — connects via **go2rtc RTSP rebroadcast** (not direct to camera)
-- go2rtc streams: `rtsp://192.168.5.87:8554/garage_outside_camera_main` / `_sub`
+**Scrypted:** `@scrypted/reolink` plugin — connects directly to the camera RTSP profiles
+- Streams: `RTSP h264Preview_01_main` / `RTSP h264Preview_01_sub`
 - Motion/AI detection via HTTP polling to camera port 80 (independent of RTSP video path)
 - FFmpeg VideoToolbox transcoding: 2560x1440 H.264 High 5.1 → 1920x1080 H.264 High 4.0 for HomeKit
-- **Snapshot URL:** `http://192.168.5.87:1984/api/stream.jpeg?src=garage_outside_camera_main` (go2rtc JPEG API — stays valid during FFmpeg restart windows)
+- **Snapshot URL:** direct Reolink HTTP snapshot API on the camera
 - Standalone HomeKit accessory
 
 **Why @scrypted/reolink instead of reolink-native:**
@@ -152,16 +152,6 @@ camera exceeds the firmware's limit, causing it to enter a continuous reboot loo
 `@scrypted/reolink` uses RTMP/RTSP for video and HTTP polling for AI events, keeping the session
 count within limits. Motion detection (person/vehicle/animal) continues to work via HTTP polling
 to port 80 — this is independent of the RTSP video stream path.
-
-**Why go2rtc instead of direct RTSP:**
-
-The camera outputs 2560x1440 H.264 High 5.1 (`profile-level-id=640033`). HomeKit requires
-H.264 High 4.0 (`profile-level-id=640028`) or lower. Scrypted must transcode via ffmpeg
-(`h264_videotoolbox` on M1 GPU). After any ffmpeg crash, the camera refuses new RTSP connections
-on port 554 for 15-20 seconds while cleaning up the previous session. HomeKit's 30-second session
-timeout expires during this reconnect window. go2rtc maintains a persistent RTSP connection to
-the camera and rebroadcasts locally — ffmpeg reconnects to go2rtc in milliseconds rather than
-waiting for the camera.
 
 **Future:** If reolink-native adds Baichuan session-count limits or the camera firmware raises
 its session cap, this camera can move to reolink-native. The commented-out entry in
@@ -196,59 +186,92 @@ Brand: GF-PH200 / Hipcam (cheap ONVIF knockoff cameras)
 - Main: `/11` (e.g. `rtsp://admin:<password>@192.168.5.174:554/11`)
 - Sub: `/12` (e.g. `rtsp://admin:<password>@192.168.5.174:554/12`)
 
-**go2rtc config — camera-specific sources:**
+**Current path:**
+- Scrypted: direct `@scrypted/onvif` to camera IP `:8080`
+- Home Assistant: direct RTSP to camera `:554/11`
+- `go2rtc`: no longer part of the primary path for these cameras
 
-| Camera | go2rtc source | Reason |
-|--------|--------------|--------|
-| Master Bathroom 1 & 2 | `ffmpeg:rtsp://...554/11#video=copy#audio=copy` | Firmware bug: `profile-level-id=000001` in SDP — ffmpeg reads actual bitstream SPS and regenerates correct SDP (`420032` = Baseline Level 5.0) |
-| Hallway 1 & 2 | `ffmpeg:rtsp://...554/11#video=copy#audio=copy` | ONVIF connection was timing out intermittently |
-| Kitchen 1 & 2, Master Bedroom, Office | `onvif://admin:<password>@<ip>:8080` | ONVIF working correctly, no issues |
+**Model strings:**
+- `C6F0SoZ0N0PmL2` — Master Bathroom Camera 1, Master Bathroom Camera 2
+- `C6F0SgZ0N0P6L0` — Hallway Camera 1, Hallway Camera 2, Kitchen Camera 1, Kitchen Camera 2, Master Bedroom Camera 1, Office Camera
 
+**Home Assistant direct RTSP examples:**
 ```yaml
-# Cameras with firmware SDP bug or ONVIF timeout — use ffmpeg source:
 master_bathroom_camera_1_main:
-  - ffmpeg:rtsp://admin:<password>@192.168.5.174:554/11#video=copy#audio=copy
-  - ffmpeg:master_bathroom_camera_1_main#audio=opus
-master_bathroom_camera_1_sub: rtsp://admin:<password>@192.168.5.174:554/12
+  input: rtsp://admin:<password>@192.168.5.174:554/11
 
-# Cameras with working ONVIF — leave as-is:
 kitchen_camera_1_main:
-  - onvif://admin:<password>@192.168.5.18:8080
-  - ffmpeg:kitchen_camera_1_main#audio=opus
-kitchen_camera_1_sub: rtsp://admin:<password>@192.168.5.18:554/12
+  input: rtsp://admin:<password>@192.168.5.18:554/11
 ```
-> Note: `ffmpeg:#audio=opus` transcodes from PCMA/G.711 A-law (garbled in HomeKit) to Opus.
 
-> Note: `ffmpeg:rtsp://...#video=copy#audio=copy` requires ffmpeg to be in PATH for go2rtc's LaunchDaemon. See Infrastructure section.
-
-**Scrypted:** `@scrypted/rtsp` plugin — connects to go2rtc RTSP rebroadcast (single producer)
-- RTSP URLs: `rtsp://192.168.5.87:8554/<camera>_main` (Opus audio from go2rtc transcode)
-- Motion: CoreML object detection (M1 Neural Engine) via `@scrypted/coreml` + `@scrypted/objectdetector` mixins
-- go2rtc is single ONVIF connection to camera — protects cheap cameras from multiple connections
-- Scrypted device IDs: see table above
-- All have Rebroadcast + WebRTC + Snapshot + HomeKit + CoreML (ObjectDetector) mixins
+**Scrypted:** `@scrypted/onvif` plugin — connects directly to the cameras on port `8080`
+- ONVIF camera IPs: `192.168.5.174`, `192.168.5.142`, `192.168.5.236`, `192.168.5.245`, `192.168.5.248`, `192.168.5.18`, `192.168.5.64`, `192.168.5.55`
+- Motion: native ONVIF-T motion events exposed directly to Scrypted as `MotionSensor`
+- Stream profiles: `MainStreamProfile` for local/recording, `SecondStreamProfile` for remote/low-resolution
+- Scrypted device names: `Master Bathroom Camera 1`, `Master Bathroom Camera 2`, `Master Bedroom Camera 1`, `Hallway Camera 1`, `Hallway Camera 2`, `Kitchen Camera 1`, `Kitchen Camera 2`, `Office Camera`
 - All set to standalone HomeKit accessory mode
-- **Snapshot URL:** `http://192.168.5.87:1984/api/stream.jpeg?src=<camera>_main` (go2rtc JPEG API — see below)
+- `go2rtc` has been retired from the primary path for these cameras in repo config; keep it only if another consumer still explicitly depends on those legacy stream names
 
 **Snapshot source (go2rtc JPEG API):**
 
-All Hipcam/Wyze cameras use go2rtc's JPEG snapshot API instead of Scrypted's prebuffer snapshot.
+Wyze cameras use go2rtc's JPEG snapshot API instead of Scrypted's prebuffer snapshot.
 go2rtc maintains its own persistent connection to each camera and caches the latest frame independently
 of Scrypted's FFmpeg pipeline — so snapshots remain valid during prebuffer restarts, preventing the
 black flash in HomeKit that occurs when the prebuffer is rebuilding.
 
-Snapshot URL pattern: `http://192.168.5.87:1984/api/stream.jpeg?src=<stream_name>`
+The non-Reolink ONVIF cameras are no longer expected to use go2rtc as their primary Scrypted media
+path. Their Scrypted devices should use direct ONVIF streams and native snapshot handling instead of
+go2rtc JPEG overrides.
+
+No general direct HTTP JPEG snapshot URL has been confirmed for all of these cheap non-Reolink
+cameras. Do not assume they support the Reolink-style `cgi-bin/api.cgi?cmd=Snap...` endpoint.
+Only confirmed model/camera-specific paths should be used, and they should remain out of
+`scrypted_snapshots.mjs` until validated live.
+
+**Bathroom cameras snapshot URL (confirmed live):**
+
+The bathroom cameras report model string `C6F0SoZ0N0PmL2`. On March 28, 2026, both bathroom cameras
+returned valid full-resolution JPEGs from:
+
+- `http://admin:<password>@192.168.5.174/snap.jpg?JpegCam=0`
+- `http://admin:<password>@192.168.5.142/snap.jpg?JpegCam=0`
+
+These URLs were also applied live in Scrypted to:
+- `Master Bathroom Camera 1`
+- `Master Bathroom Camera 2`
+
+with `snapshot:snapshotsFromPrebuffer = Disabled`.
+
+**Other model-based snapshot candidates (still unverified):**
+
+The bathroom cameras report model string `C6F0SoZ0N0PmL2`. Crowd-sourced camera databases for this
+family suggest these JPEG paths as test candidates:
+
+1. `http://admin:<password>@192.168.5.174/tmpfs/auto.jpg`
+2. `http://admin:<password>@192.168.5.142/tmpfs/auto.jpg`
+
+`tmpfs/auto.jpg` is still unverified for this model in this environment.
+
+For the remaining cheap cameras with model string `C6F0SgZ0N0P6L0`, the following was confirmed live
+on March 28, 2026 using port `81`:
+
+Confirmed working:
+- `Hallway Camera 2` -> `http://admin:<password>@192.168.5.248:81/snap.jpg?JpegCam=0`
+- `Kitchen Camera 1` -> `http://admin:<password>@192.168.5.18:81/snap.jpg?JpegCam=0`
+- `Kitchen Camera 2` -> `http://admin:<password>@192.168.5.64:81/snap.jpg?JpegCam=0`
+- `Office Camera` -> `http://admin:<password>@192.168.5.55:81/snap.jpg?JpegCam=0`
+
+These four URLs were also applied live in Scrypted with
+`snapshot:snapshotsFromPrebuffer = Disabled`.
+
+Not confirmed:
+- `Hallway Camera 1` (`192.168.5.245`) -> port `81` timed out for both `snap.jpg?JpegCam=0` and `tmpfs/auto.jpg`
+- `Master Bedroom Camera 1` (`192.168.5.236`) -> port `81` refused the connection for both `snap.jpg?JpegCam=0` and `tmpfs/auto.jpg`
+
+Snapshot URL pattern: `http://192.168.1.85:1984/api/frame.jpeg?src=<stream_name>`
 
 | Camera | Snapshot URL |
 |--------|-------------|
-| Master Bathroom Camera 1 | `…?src=master_bathroom_camera_1_main` |
-| Master Bathroom Camera 2 | `…?src=master_bathroom_camera_2_main` |
-| Master Bedroom Camera 1 | `…?src=master_bedroom_camera_1_main` |
-| Hallway Camera 1 | `…?src=hallway_camera_1_main` |
-| Hallway Camera 2 | `…?src=hallway_camera_2_main` |
-| Kitchen Camera 1 | `…?src=kitchen_camera_1_main` |
-| Kitchen Camera 2 | `…?src=kitchen_camera_2_main` |
-| Office Camera | `…?src=office_camera_main` |
 | Living Room Camera | `…?src=living_room_camera_main` |
 | Front Door Camera | `…?src=front_door_camera_main` |
 
@@ -280,6 +303,8 @@ Set automatically by `scrypted_setup.mjs`.
 | Living Room Camera | Living room | 192.168.5.62 | Wyze Cam v3 Pro (HL_CAM3P) |
 | Front Door Camera | Front door | 192.168.5.177 | Wyze Cam Pan v3 (HL_PAN3) |
 
+> These IPs are expected to stay fixed via DHCP reservations. If either Wyze camera moves, the current `wyze://` source definitions in go2rtc will fail until the IPs are updated.
+
 **go2rtc config:**
 ```yaml
 # Living Room — wyze:// P2P (working, left as-is)
@@ -287,6 +312,8 @@ living_room_camera_main:
   - wyze://192.168.5.62?dtls=true&enr=gvnv3V%2FieXQ3b%2FTb&mac=D03F2798D5B3&model=HL_CAM3P&uid=Z6A8GPTL2HBJM1X1111A&quality=hd
   - ffmpeg:living_room_camera_main#audio=opus
 living_room_camera_sub: wyze://...&quality=sd
+# Legacy helper stream kept in go2rtc config; Surveillance Station should use
+# the Scrypted rebroadcast URL instead of pulling this stream directly.
 living_room_camera_synology:
   - living_room_camera_main
   - ffmpeg:living_room_camera_main#audio=aac
@@ -296,23 +323,47 @@ front_door_camera_main:
   - wyze://192.168.5.177?dtls=true&enr=LXpAWo3xT%2Bs4ettg&mac=D03F27BCCA2D&model=HL_PAN3&uid=6LZN32SM98X9ULWF111A&quality=hd
   - ffmpeg:front_door_camera_main#audio=opus
 front_door_camera_sub: wyze://...&quality=sd
+# Legacy helper stream kept in go2rtc config; Surveillance Station should use
+# the Scrypted rebroadcast URL instead of pulling this stream directly.
 front_door_camera_synology:
   - front_door_camera_main
   - ffmpeg:front_door_camera_main#audio=aac
 ```
 
-> Note: The `_synology` variants are for Surveillance Station. They keep H.264 video and transcode audio to AAC. The existing main Wyze streams remain Opus for Scrypted/HomeKit.
-> These `_synology` RTSP URLs only work after the live `/Users/sn/docker/go2rtc.yaml` has been updated and `go2rtc` reloaded on `192.168.5.87`.
+> Note: The main Wyze streams stay on `wyze://` P2P into `go2rtc`, and Scrypted consumes those RTSP rebroadcasts. Surveillance Station does not pull the Wyze cameras directly from `go2rtc`; it uses Scrypted's rebroadcast URL for each camera instead.
 
 **Scrypted:** `@scrypted/rtsp` plugin — connects to go2rtc RTSP rebroadcast
-- RTSP URLs: `rtsp://192.168.5.87:8554/living_room_camera_main`, `rtsp://192.168.5.87:8554/front_door_camera_main`
+- RTSP URLs: `rtsp://192.168.1.85:8554/living_room_camera_main`, `rtsp://192.168.1.85:8554/front_door_camera_main`
 - Scrypted IDs: 46 (Living Room Camera), 47 (Front Door Camera)
-- Motion events: CoreML object detection (M1 Neural Engine) via `@scrypted/coreml` + `@scrypted/objectdetector` mixins
-- HKSV triggered by CoreML motion — no MQTT, no wyze-bridge required
+- Base ingest path: `Wyze -> go2rtc -> Scrypted RTSP plugin`
+- Scrypted rebroadcast is the source used by Surveillance Station
+- Surveillance Station sends motion back into Scrypted via the Synology plugin
+- HomeKit is streamed from Scrypted, with motion coming from the Synology path
+- CoreML remains available as a fallback, but it is no longer the preferred motion path for Wyze
 
 **Synology Surveillance Station:**
-- RTSP URLs: `rtsp://192.168.5.87:8554/living_room_camera_synology`, `rtsp://192.168.5.87:8554/front_door_camera_synology`
-- Use H.264 video with AAC audio
+- Source: each Wyze camera's Scrypted rebroadcast URL
+- Existing Surveillance Station camera entries:
+  - `Living Room Camera` id `347`
+  - `Front Door Camera` id `346`
+- Matching Scrypted Synology devices:
+  - `Living Room Camera` id `110`
+  - `Front Door Camera` id `109`
+- Synology remains the preferred motion source for these cameras
+
+**Synology motion webhook setup:**
+
+Create one Surveillance Station action rule per camera.
+
+1. Open Surveillance Station.
+2. Go to `Action Rule`.
+3. Create a new rule for the camera's motion-detected event.
+4. Choose the action type `Webhook`.
+5. Set method to `POST`.
+6. Paste the matching Scrypted webhook URL:
+   - `Living Room Camera` -> `http://192.168.1.85:11080/endpoint/110/public/motionDetected`
+   - `Front Door Camera` -> `http://192.168.1.85:11080/endpoint/109/public/motionDetected`
+7. Save the rule and trigger motion once to verify Scrypted receives it.
 
 **HomeKit pairing PINs:**
 
@@ -329,12 +380,16 @@ front_door_camera_synology:
 |--------|----------|----|
 | Eufy Garage Camera 1 | Garage interior | 192.168.5.179 |
 
+> This IP is expected to stay fixed via DHCP reservation for the current go2rtc config to remain valid.
+
 **go2rtc config:**
 ```yaml
 eufy_garage_camera_1_main: rtsp://admin:<password>@192.168.5.179/live0
 ```
 
-**Scrypted:** `@scrypted/rtsp` plugin — **not yet added** (pending)
+**Home Assistant:** pulls the `go2rtc` rebroadcast for this camera.
+
+**HomeKit / HKSV / motion:** handled by the Eufy ecosystem with HomeBase. This camera is not intended to loop through Scrypted for HomeKit.
 
 ---
 
@@ -343,6 +398,8 @@ eufy_garage_camera_1_main: rtsp://admin:<password>@192.168.5.179/live0
 | Camera | Location | IP |
 |--------|----------|----|
 | Front Doorbell | Front door | 192.168.5.91 |
+
+> This IP is expected to stay fixed via DHCP reservation for the current go2rtc candidate mappings to remain valid.
 
 **go2rtc config:**
 ```yaml
@@ -358,12 +415,31 @@ front_doorbell_candidate_local_3: rtsp://192.168.5.91:554/stream1
 ```
 
 > Note: These August/3rd-party doorbell RTSP paths are all unverified candidates. Internet references support the `/live/stream*` family, with `/live/stream` the strongest candidate. The `/stream*` family is from prior local guessing only and has not been confirmed online.
+> Prior local documentation assumed AAC audio for this doorbell, but the RTSP audio codec is still unverified.
 
 **Latest live verification (2026-03-27):**
-- Probed all 6 candidates from the Mac Mini (`192.168.5.87`)
+- Probed all 6 candidates from the Mac Mini (`192.168.1.85`)
 - `rtsp://192.168.5.91:554/live/stream` timed out once
 - subsequent probes failed because `192.168.5.91` became unreachable (`Host is down`, ARP incomplete)
 - current blocker is device/network reachability, not a confirmed RTSP path mismatch
+
+**Surveillance Station note:**
+- Used in Surveillance Station: `rtsp://snassar:Egyptian1975@192.168.1.85:554/front_doorbell_main`
+- Intended `go2rtc` mapping: `front_doorbell_main -> rtsp://192.168.5.91:554/live/stream`
+- Existing Surveillance Station camera entry: `Front Doorbell` id `348`
+- Matching Scrypted Synology device: `Front Doorbell` id `111`
+- Scrypted motion webhook URL: `http://192.168.1.85:11080/endpoint/111/public/motionDetected`
+
+**Synology motion webhook setup:**
+
+1. Open Surveillance Station.
+2. Go to `Action Rule`.
+3. Create a rule for `Front Doorbell` motion detected.
+4. Choose action type `Webhook`.
+5. Set method to `POST`.
+6. Use webhook URL:
+   - `http://192.168.1.85:11080/endpoint/111/public/motionDetected`
+7. Save the rule and trigger motion once to verify Scrypted receives it.
 
 **Status: ON HOLD** — RTSP connectivity issues; needs validation before adding to Scrypted/HomeKit
 
@@ -371,16 +447,19 @@ front_doorbell_candidate_local_3: rtsp://192.168.5.91:554/stream1
 
 ## Infrastructure
 
+**DHCP reservation requirement:** The current Scrypted and go2rtc setup assumes every camera keeps a stable reserved IP from DHCP. The scripts and configs in this repo are not designed to rediscover cameras automatically after IP or subnet changes.
+
 ### go2rtc
 
-- **Host:** Mac Mini M1 (`192.168.5.87`)
+- **Host:** Mac Mini M1 (`192.168.1.85`)
 - **Config:** `/Users/sn/docker/go2rtc.yaml`
 - **Running as:** root (LaunchDaemon `/Library/LaunchDaemons/com.go2rtc.plist`)
 - **Ports:** 1984 (Web UI/API), 8554 (RTSP), 8555 (WebRTC TCP/UDP)
-- **Web UI:** `http://192.168.5.87:1984`
+- **Web UI:** `http://192.168.1.85:1984`
 - **Restart:** `curl -X POST http://localhost:1984/api/restart` (or `sudo launchctl unload/load /Library/LaunchDaemons/com.go2rtc.plist`)
 - **ffmpeg PATH:** `/opt/homebrew/bin` added to LaunchDaemon environment via `EnvironmentVariables` in plist — required for `ffmpeg:rtsp://` sources
-- **Keepalive:** `~/Library/LaunchAgents/com.go2rtc.keepalive.plist` runs `~/go2rtc-keepalive.sh` — maintains persistent ffmpeg connections to all 10 Hipcam + Wyze cameras so they stay awake and go2rtc stays connected
+- **Keepalive:** `/Library/LaunchDaemons/com.go2rtc.keepalive.plist` runs `~/go2rtc-keepalive.sh` as a system daemon — keeps the Wyze P2P streams warm using `127.0.0.1` go2rtc endpoints so subnet changes on the Mac Mini do not break the keepalive job
+- **Legacy camera subnet alias:** `/Library/LaunchDaemons/com.camera-subnet-alias.plist` runs `~/ensure-camera-subnet-alias.sh` and keeps `192.168.5.85/24` on `en0` so unchanged `192.168.5.x` cameras can still be reached after the Mac Mini moved to `192.168.1.85`
 
 **Adding ffmpeg PATH to go2rtc LaunchDaemon** (required once after fresh install):
 ```bash
@@ -390,28 +469,44 @@ sudo launchctl unload /Library/LaunchDaemons/com.go2rtc.plist
 sudo launchctl load /Library/LaunchDaemons/com.go2rtc.plist
 ```
 
-**Installing the keepalive LaunchAgent** (required once after fresh install):
+**Installing the keepalive LaunchDaemon** (required once after fresh install):
 ```bash
-launchctl load ~/Library/LaunchAgents/com.go2rtc.keepalive.plist
+sudo cp ./com.go2rtc.keepalive.plist /Library/LaunchDaemons/com.go2rtc.keepalive.plist
+sudo chown root:wheel /Library/LaunchDaemons/com.go2rtc.keepalive.plist
+sudo chmod 644 /Library/LaunchDaemons/com.go2rtc.keepalive.plist
+sudo launchctl bootstrap system /Library/LaunchDaemons/com.go2rtc.keepalive.plist
+sudo launchctl enable system/com.go2rtc.keepalive
+sudo launchctl kickstart -k system/com.go2rtc.keepalive
+```
+
+**Installing the legacy camera subnet alias LaunchDaemon** (needed while some cameras remain on `192.168.5.x`):
+```bash
+sudo cp ./com.camera-subnet-alias.plist /Library/LaunchDaemons/com.camera-subnet-alias.plist
+sudo chown root:wheel /Library/LaunchDaemons/com.camera-subnet-alias.plist
+sudo chmod 644 /Library/LaunchDaemons/com.camera-subnet-alias.plist
+sudo launchctl bootstrap system /Library/LaunchDaemons/com.camera-subnet-alias.plist
+sudo launchctl enable system/com.camera-subnet-alias
+sudo launchctl kickstart -k system/com.camera-subnet-alias
 ```
 
 ### Scrypted
 
-- **Host:** Mac Mini M1 (`192.168.5.87`)
-- **Running as:** Native macOS LaunchAgent (`~/Library/LaunchAgents/com.scrypted.plist`)
+- **Host:** Mac Mini M1 (`192.168.1.85`)
+- **Running as:** Native macOS LaunchDaemon (`/Library/LaunchDaemons/com.scrypted.plist`) under user `sn`
 - **Node.js:** `/opt/homebrew/opt/node@20/bin/node` (v20 LTS)
 - **Install dir:** `~/.scrypted/`
 - **Volume:** `~/.scrypted/volume/`
-- **Web UI:** `https://192.168.5.87:10443`
-- **Logs:** `/tmp/scrypted.log`
-- **Restart:** `launchctl stop com.scrypted` (launchd auto-restarts due to KeepAlive)
+- **Web UI:** `https://192.168.1.85:10443`
+- **Logs:** `~/.scrypted/scrypted-daemon.log`
+- **Restart:** `sudo launchctl kickstart -k system/com.scrypted`
 - **Plugins installed:**
-  - `@scrypted/rtsp` — Hipcam ONVIF cameras (via go2rtc RTSP) + Wyze cameras (via go2rtc RTSP)
-  - `@scrypted/reolink` — Garage Outside Camera (via go2rtc RTSP; reolink-native causes Baichuan session overflow on this model)
+  - `@scrypted/onvif` — Hipcam ONVIF cameras (direct to camera, ONVIF-T motion)
+  - `@scrypted/rtsp` — Wyze cameras (via go2rtc RTSP)
+  - `@scrypted/reolink` — Garage Outside Camera (direct camera RTSP + HTTP polling; reolink-native causes Baichuan session overflow on this model)
   - `@apocaliss92/scrypted-reolink-native` — Reolink doorbells (direct to camera, Baichuan push for instant doorbell events)
   - `@scrypted/homekit` — HomeKit bridge
-  - `@scrypted/coreml` — Apple Silicon CoreML / M1 Neural Engine object detection (Wyze + ONVIF motion)
-  - `@scrypted/objectdetector` — Video Analysis Plugin (paired with CoreML for Wyze + ONVIF)
+  - `@scrypted/coreml` — Apple Silicon CoreML / M1 Neural Engine object detection (Wyze motion)
+  - `@scrypted/objectdetector` — Video Analysis Plugin (paired with CoreML for Wyze)
   - `@scrypted/webrtc` — WebRTC support
   - `@scrypted/prebuffer-mixin` (Rebroadcast) — prebuffering for HKSV
   - `@scrypted/snapshot` — snapshot support
@@ -427,7 +522,7 @@ launchctl load ~/Library/LaunchAgents/com.go2rtc.keepalive.plist
 
 ### Home Assistant
 
-- **Host:** `192.168.5.182`
+- **Host:** `192.168.1.185`
 - **Camera integrations:**
   - Reolink (native) — 5 cameras/doorbells
   - go2rtc streams — generic cameras and Wyze via RTSP
@@ -441,7 +536,7 @@ launchctl load ~/Library/LaunchAgents/com.go2rtc.keepalive.plist
 |-------------|--------------|----------------|--------|
 | Reolink doorbells | Camera onboard AI via Baichuan push (person/vehicle/pet/visitor, instant) | ✅ reolink-native → HKSV | ✅ VideoToolbox — HKSV encode |
 | Garage Outside Camera | Camera onboard AI via HTTP polling port 80 (person/vehicle/animal) | ✅ @scrypted/reolink → HKSV | ✅ VideoToolbox — transcode + HKSV encode |
-| Hipcam Knockoff | CoreML via go2rtc RTSP (M1 Neural Engine — dedicated, no CPU competition) | ✅ Scrypted RTSP + CoreML → HKSV | ✅ Neural Engine (motion) + VideoToolbox (HKSV encode) — parallel hardware |
+| Hipcam Knockoff | Native ONVIF-T motion events direct to Scrypted | ✅ Scrypted ONVIF → HKSV | ✅ VideoToolbox — HKSV encode |
 | Wyze | CoreML via go2rtc RTSP (M1 Neural Engine — dedicated, no CPU competition) | ✅ Scrypted CoreML → HKSV | ✅ Neural Engine (motion) + VideoToolbox (HKSV encode) — parallel hardware |
 | Eufy | TBD | TBD | TBD |
 
@@ -509,7 +604,7 @@ Scrypted's LevelDB database was corrupted after a forced process kill (`launchct
 ### Recovery Sources Used
 
 - **ONVIF camera IPs**: `/Users/sn/docker/go2rtc.yaml` on Mac Mini
-- **Reolink camera IPs**: HA Reolink integration API (`192.168.5.182`)
+- **Reolink camera IPs**: HA Reolink integration API (`192.168.1.185`)
 - **Wyze go2rtc streams**: `/Users/sn/docker/go2rtc.yaml`
 
 ---
@@ -594,7 +689,7 @@ or repair workflow. Use device names in scripts where possible.
 ### Wyze Motion Flow (new)
 
 ```
-Wyze Camera → go2rtc (wyze:// P2P) → RTSP rtsp://192.168.5.87:8554/<cam>_main
+Wyze Camera → go2rtc (wyze:// P2P) → RTSP rtsp://192.168.1.85:8554/<cam>_main
                                               │
                                         Scrypted RTSP Plugin
                                               │
@@ -613,12 +708,12 @@ Wyze Camera → go2rtc (wyze:// P2P) → RTSP rtsp://192.168.5.87:8554/<cam>_mai
 ### Recovery Sources (same as before)
 
 - **ONVIF camera IPs**: `/Users/sn/docker/go2rtc.yaml` on Mac Mini
-- **Reolink camera IPs**: HA Reolink integration (192.168.5.182)
-- **Wyze RTSP URLs**: `rtsp://192.168.5.87:8554/living_room_camera_main`, `rtsp://192.168.5.87:8554/front_door_camera_main`
+- **Reolink camera IPs**: HA Reolink integration (192.168.1.185)
+- **Wyze RTSP URLs**: `rtsp://192.168.1.85:8554/living_room_camera_main`, `rtsp://192.168.1.85:8554/front_door_camera_main`
 
 ---
 
-## Session Log: 2026-03-27 — Garage Outside Camera: reolink-native → @scrypted/reolink + go2rtc
+## Session Log: 2026-03-27 — Garage Outside Camera: reolink-native → @scrypted/reolink
 
 ### Problem
 
@@ -632,27 +727,19 @@ count to exceed the camera firmware's limit. The camera interprets this as an at
 1. **Switched to `@scrypted/reolink`** — uses RTMP/RTSP for video and HTTP polling for AI events,
    no Baichuan sessions. Reboot loop stopped immediately.
 
-2. **Added camera to go2rtc** as `garage_outside_camera_main` / `_sub`. go2rtc maintains a
-   persistent RTSP connection so Scrypted reconnects in milliseconds after any ffmpeg crash
-   (vs 15-20s "Connection refused" when connecting directly to the camera).
-
-3. **Configured FFmpeg VideoToolbox transcoding** — camera outputs 2560x1440 H.264 High 5.1
+2. **Configured FFmpeg VideoToolbox transcoding** — camera outputs 2560x1440 H.264 High 5.1
    (`profile-level-id=640033`). HomeKit requires High 4.0 max. FFmpeg output args set to:
    `-vf scale=1920:1080 -c:v h264_videotoolbox -b:v 4000k -profile:v high -level:v 4.0 -realtime 1 -c:a copy`
 
-4. **All configuration done programmatically** via `@scrypted/client` SDK (no UI clicks).
+3. **All configuration done programmatically** via `@scrypted/client` SDK (no UI clicks).
 
 ### Key Technical Details
 
 - **FU-A fragmentation fix**: RTSP parser set to "FFmpeg (TCP)" — Scrypted's native parser fails
   to reassemble large H.264 High profile NAL units from this camera's 2.5K stream.
 - **Rebroadcast port 0**: Auto-assign prevents EADDRINUSE on port 49498 after plugin restart.
-- **Synthetic streams**: go2rtc RTSP URLs added as `prebuffer:synthenticStreams` (note typo in
-  Scrypted's API key). This makes them available in the stream selector dropdowns.
-- **syntheticInputIdKey**: Maps go2rtc streams to native stream codec metadata so Scrypted knows
-  the codec without probing the go2rtc URL separately.
 - **Motion detection unaffected**: `@scrypted/reolink` polls `http://192.168.5.84:80` for AI
-  events independently of the RTSP video path — switching to go2rtc for video does not change
+  events independently of the RTSP video path — switching away from reolink-native does not change
   how motion/person/vehicle detection works.
 
 ### Scrypted Device IDs After This Change
@@ -703,8 +790,8 @@ npx scrypted install @scrypted/snapshot 127.0.0.1
 **4. Add all 14 cameras** using the setup script:
 ```bash
 # From local machine:
-scp scrypted_setup.mjs sn@192.168.5.87:/tmp/
-ssh sn@192.168.5.87 'PATH=/opt/homebrew/opt/node@20/bin:$PATH node /tmp/scrypted_setup.mjs'
+scp scrypted_setup.mjs sn@192.168.1.85:/tmp/
+ssh sn@192.168.1.85 'PATH=/opt/homebrew/opt/node@20/bin:$PATH node /tmp/scrypted_setup.mjs'
 ```
 
 The script uses `@scrypted/client` (bundled by npx scrypted) to connect via WebSocket and call `createDevice()` on the RTSP and Reolink Native plugin devices.
@@ -724,7 +811,7 @@ The following is **now handled programmatically**:
 5. ✅ Standalone HomeKit accessory mode enabled on each camera via `homekit:standalone=true`
 
 Still required:
-- **Home app pairing**: open `https://192.168.5.87:10443`, go to each camera → Extensions → HomeKit, copy the pairing PIN, add accessory in Home
+- **Home app pairing**: open `https://192.168.1.85:10443`, go to each camera → Extensions → HomeKit, copy the pairing PIN, add accessory in Home
 
 ### Repair Workflow for Existing Installs
 
@@ -733,8 +820,8 @@ If RTSP cameras were already paired in Home before the correct mixin chain was p
 Use `scrypted_mixins.mjs` to repair an existing install:
 
 ```bash
-scp scrypted_mixins.mjs sn@192.168.5.87:/tmp/
-ssh sn@192.168.5.87 'PATH=/opt/homebrew/opt/node@20/bin:$PATH node /tmp/scrypted_mixins.mjs'
+scp scrypted_mixins.mjs sn@192.168.1.85:/tmp/
+ssh sn@192.168.1.85 'PATH=/opt/homebrew/opt/node@20/bin:$PATH node /tmp/scrypted_mixins.mjs'
 ```
 
 This script:
@@ -769,21 +856,36 @@ go2rtc runs as root with no Homebrew in PATH. Added `EnvironmentVariables` to `/
 
 **Fix:** Same as bathroom — `ffmpeg:rtsp://...554/11#video=copy#audio=copy`. Direct RTSP bypasses ONVIF handshake, more reliable on reconnect.
 
-#### 5. Front Door Camera (Wyze Pan v3) — RTSP direct
-**Problem:** `wyze://` P2P was failing with `discovery timeout` and `av login failed: context deadline exceeded`. Wyze P2P depends on cloud infrastructure which was intermittently unavailable.
+#### 5. Wyze Cameras — stay on `wyze://` P2P
+**Decision:** Keep both Wyze cameras (`Living Room Camera`, `Front Door Camera`) on `wyze://` in go2rtc. Do not switch the front-door camera to direct RTSP unless that is explicitly re-enabled later.
 
-**Fix:** Enabled RTSP on camera via Wyze app (Settings → Advanced Settings → RTSP). Switched go2rtc source to `ffmpeg:rtsp://ra8844:Egypti%40n1975@192.168.5.177:554/stream0#video=copy#audio=copy`.
+**Current issue:** The live failures were initially `wyze: connect failed: discovery timeout`. The root cause for the primary-network-only setup was SRM network isolation on `Courtyardson`, which blocked `192.168.1.85` from reaching `192.168.5.x`.
 
-**Why ffmpeg source:** Camera SDP sends audio as track 0 and video as track 1. go2rtc's native RTSP receiver only picks up audio in this case. ffmpeg handles reversed track order correctly.
+**Operational note:** Historical RTSP-direct experiments existed for the front-door Wyze, but RTSP is not the preferred path for the current architecture.
 
-**Result:** 1920x1080 H264 Main 20fps streaming via RTSP.
+**2026-03-29 validation after disabling `Courtyardson` isolation:**
+- `Living Room Camera` (`192.168.5.62`) recovered fully on Ethernet-only Mac Mini access.
+  - Ping from `192.168.1.85`: `2/2`
+  - `go2rtc` JPEG frame: valid `2560x1440`
+  - local RTSP rebroadcast: working
+- `Front Door Camera` (`192.168.5.177`) became reachable, but remains unstable.
+  - Ping from `192.168.1.85`: `3/4`, with extreme latency spikes (`~610 ms` to `~2598 ms`)
+  - `go2rtc` JPEG frame probe timed out after `25s`
+  - remaining issue is camera/link quality on that device, not the overall go2rtc/Scrypted architecture
 
-#### 6. Keepalive LaunchAgent
-**Problem:** Hipcam cameras go into idle sleep when no RTSP clients connected. go2rtc uses lazy loading — only connects to cameras when Scrypted requests a stream. On wakeup, camera takes a few seconds to respond, causing initial timeout.
+#### 6. Keepalive LaunchDaemon
+**Problem:** Wyze cameras use the `wyze://` P2P source path and go2rtc uses lazy loading. After a reboot or a long idle period, the first downstream request can hit a warm-up timeout.
 
-**Fix:** Created `~/go2rtc-keepalive.sh` — runs one persistent `ffmpeg` process per camera that reads from go2rtc's RTSP rebroadcast indefinitely (reconnects after 5s if dropped). Installed as user LaunchAgent (`~/Library/LaunchAgents/com.go2rtc.keepalive.plist`).
+**Fix:** Created `~/go2rtc-keepalive.sh` — runs one persistent `ffmpeg` process per Wyze camera against `rtsp://127.0.0.1:8554/<stream>`, waits for the local go2rtc API on boot, removes the legacy lock file left by the old script, and is installed as system LaunchDaemon (`/Library/LaunchDaemons/com.go2rtc.keepalive.plist`) so it survives Mac Mini reboots without requiring a macOS login.
 
-**Cameras covered:** All 8 Hipcam + Living Room Wyze + Front Door Wyze (10 total).
+**Cameras covered:** Living Room Wyze + Front Door Wyze (2 total). The Hipcam cameras no longer use go2rtc in the Scrypted path and should not be kept alive here.
+
+#### 7. Legacy Camera Subnet Alias
+**Problem:** The Mac Mini moved to `192.168.1.85`, but some direct camera sources in go2rtc still live on `192.168.5.x` and were not migrated at the same time.
+
+**Attempted fix:** Created `~/ensure-camera-subnet-alias.sh` and temporarily installed `/Library/LaunchDaemons/com.camera-subnet-alias.plist` to keep `192.168.5.85/24` aliased on `en0` after boot.
+
+**Outcome:** Rolled back. The alias interfered with normal Mac connectivity, including VNC access to the Mac Mini. The correct fix was disabling SRM network isolation on `Courtyardson`, not keeping a secondary alias on `en0`.
 
 ### Cameras Left on ONVIF (working fine, no changes needed)
 - Kitchen Camera 1 & 2
