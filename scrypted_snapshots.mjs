@@ -1,9 +1,14 @@
 /**
  * Scrypted Snapshot URL Apply Script
  *
- * Applies go2rtc JPEG snapshot URLs to all existing cameras without recreating devices.
- * Run after a fresh Scrypted install once all cameras are created and mixins are added,
- * or any time you need to re-apply snapshot settings.
+ * Applies snapshot URLs to the existing Scrypted-managed cameras without
+ * recreating devices. Run after a fresh Scrypted install once all cameras are
+ * created and mixins are added, or any time you need to re-apply snapshot
+ * settings.
+ *
+ * Cameras intentionally outside the Scrypted path are excluded here by design.
+ * In particular, Eufy Garage Camera 1 stays on go2rtc for Home Assistant only,
+ * while HomeKit/HKSV/motion continue to come from Eufy via HomeBase.
  *
  * Run via SSH:
  *   PATH=/opt/homebrew/opt/node@20/bin:$PATH SCRYPTED_TOKEN=<token> REOLINK_PASSWORD=<pass> \
@@ -15,24 +20,25 @@ import { connectScryptedClient } from "/Users/sn/.npm/_npx/f8ff587849d254b8/node
 const API_TOKEN              = process.env.SCRYPTED_TOKEN         || "<paste-token-here>";
 const REOLINK_PASSWORD       = process.env.REOLINK_PASSWORD       || "<reolink-password>";
 const GARAGE_CAMERA_PASSWORD = process.env.GARAGE_CAMERA_PASSWORD || "<garage-camera-password>";
-const GO2RTC                 = "http://192.168.5.87:1984";
+const GO2RTC                 = "http://192.168.1.85:1984";
 
-// go2rtc JPEG snapshot: http://192.168.5.87:1984/api/stream.jpeg?src=<stream>
-const RTSP_SNAPSHOTS = [
-  { name: "Master Bathroom Camera 1", stream: "master_bathroom_camera_1_main" },
-  { name: "Master Bathroom Camera 2", stream: "master_bathroom_camera_2_main" },
-  { name: "Master Bedroom Camera 1",  stream: "master_bedroom_camera_1_main"  },
-  { name: "Hallway Camera 1",         stream: "hallway_camera_1_main"         },
-  { name: "Hallway Camera 2",         stream: "hallway_camera_2_main"         },
-  { name: "Kitchen Camera 1",         stream: "kitchen_camera_1_main"         },
-  { name: "Kitchen Camera 2",         stream: "kitchen_camera_2_main"         },
-  { name: "Office Camera",            stream: "office_camera_main"            },
+// go2rtc JPEG snapshot: http://192.168.1.85:1984/api/frame.jpeg?src=<stream>
+// Wyze still uses go2rtc JPEG snapshots even though Surveillance Station now
+// consumes Scrypted rebroadcast URLs and is the preferred motion source.
+const GO2RTC_SNAPSHOTS = [
   { name: "Living Room Camera",       stream: "living_room_camera_main"       },
   { name: "Front Door Camera",        stream: "front_door_camera_main"        },
 ];
 
+const EXCLUDED_CAMERAS = [
+  {
+    name: "Eufy Garage Camera 1",
+    reason: "Not managed by Scrypted for HomeKit/HKSV/motion; Eufy + HomeBase own that path.",
+  },
+];
+
 // Camera HTTP JPEG API — direct to camera (not via go2rtc)
-// go2rtc JPEG endpoint goes blank when no consumer is connected; camera HTTP API is always live.
+// Only include cameras with a known direct snapshot endpoint here.
 const DIRECT_SNAPSHOTS = [
   { name: "Garage Outside Camera",   ip: "192.168.5.84",  password: GARAGE_CAMERA_PASSWORD },
   { name: "Courtyard Doorbell",      ip: "192.168.5.141", password: REOLINK_PASSWORD },
@@ -51,12 +57,12 @@ async function main() {
   const sm = sdk.systemManager;
   console.log("Connected.\n");
 
-  // ── RTSP + Garage Outside Camera — go2rtc JPEG API ────────────────────────
-  console.log("=== Applying go2rtc JPEG snapshot URLs (RTSP cameras + Garage Outside) ===");
-  for (const cam of RTSP_SNAPSHOTS) {
+  // ── go2rtc JPEG API — Wyze cameras ────────────────────────────────────────
+  console.log("=== Applying go2rtc JPEG snapshot URLs (Wyze cameras) ===");
+  for (const cam of GO2RTC_SNAPSHOTS) {
     const device = sm.getDeviceByName(cam.name);
     if (!device) { console.log(`  ✗ ${cam.name} — not found`); continue; }
-    const url = `${GO2RTC}/api/stream.jpeg?src=${cam.stream}`;
+    const url = `${GO2RTC}/api/frame.jpeg?src=${cam.stream}`;
     try {
       await device.putSetting("snapshot:snapshotUrl", url);
       await device.putSetting("snapshot:snapshotsFromPrebuffer", "Disabled");
@@ -66,7 +72,12 @@ async function main() {
     }
   }
 
-  // ── Direct camera HTTP JPEG API (Garage Outside Camera + doorbells) ────────
+  console.log("\n=== Cameras intentionally excluded from snapshot updates ===");
+  for (const cam of EXCLUDED_CAMERAS) {
+    console.log(`  - ${cam.name}: ${cam.reason}`);
+  }
+
+  // ── Direct camera HTTP JPEG API (Reolink cameras) ─────────────────────────
   console.log("\n=== Applying direct camera HTTP snapshot URLs ===");
   for (const cam of DIRECT_SNAPSHOTS) {
     const device = sm.getDeviceByName(cam.name);
