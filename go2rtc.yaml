@@ -1,26 +1,24 @@
-# go2rtc configuration — Mac Mini M1 (192.168.5.87)
+# go2rtc configuration — Mac Mini M1 (192.168.1.85)
 # Live file location: /Users/sn/docker/go2rtc.yaml
 # Last updated: 2026-03-25
 #
 # go2rtc runs as root LaunchDaemon: /Library/LaunchDaemons/com.go2rtc.plist
 # PATH includes /opt/homebrew/bin (required for ffmpeg: sources)
-# Web UI / API: http://192.168.5.87:1984
-# RTSP rebroadcast: rtsp://192.168.5.87:8554/<stream_name>
+# Web UI / API: http://192.168.1.85:1984
+# RTSP rebroadcast: rtsp://192.168.1.85:8554/<stream_name>
 #
 # Source types used:
-#   onvif://    — ONVIF discovery → RTSP (cameras with working ONVIF implementation)
-#   ffmpeg:rtsp://...#video=copy#audio=copy
-#               — Direct RTSP via ffmpeg (fixes bad SDP from camera firmware bugs,
-#                 and handles cameras where audio/video track order is reversed)
 #   wyze://     — Wyze P2P direct connection
-#   rtsp://     — Direct RTSP (sub streams, August doorbell, Eufy)
+#   rtsp://     — Direct RTSP (Reolink, August doorbell, Eufy)
 #
-# Audio transcoding: ffmpeg:<stream>#audio=opus
-#   All Hipcam and Wyze cameras output PCMA/G.711 or PCMU — go2rtc transcodes
-#   once to Opus for HA and Scrypted. No duplicate transcoding downstream.
+# Audio transcoding: ffmpeg:<stream>#audio=opus or #audio=aac
+#   Wyze streams are transcoded once in go2rtc for downstream consumers.
+#   Synology-specific Wyze variants use AAC instead of Opus.
 #
-# Keepalive: ~/go2rtc-keepalive.sh (LaunchAgent) maintains persistent ffmpeg
-#   connections to all 10 Hipcam + Wyze streams so cameras stay awake.
+# Keepalive: /Library/LaunchDaemons/com.go2rtc.keepalive.plist runs
+#   ~/go2rtc-keepalive.sh as a system daemon using localhost go2rtc endpoints.
+#   This avoids breakage when the Mac Mini LAN IP changes and survives reboots
+#   without requiring an interactive macOS login.
 
 log:
   format: color
@@ -62,78 +60,22 @@ onvif:
 streams:
 
   # -------------------------------------------------------
-  # Hipcam GF-PH200 cameras (8 total)
-  # Credentials: admin / egypt1
-  # RTSP: main stream /11, sub stream /12, ONVIF port 8080
-  # -------------------------------------------------------
-
-  # Master Bathroom 1 & 2 — ffmpeg source (firmware SDP bug: profile-level-id=000001)
-  # ffmpeg reads actual SPS from bitstream → regenerates correct SDP (420032 = Baseline L5.0)
-  master_bathroom_camera_1_main:
-  - ffmpeg:rtsp://admin:egypt1@192.168.5.174:554/11#video=copy#audio=copy
-  - ffmpeg:master_bathroom_camera_1_main#audio=opus
-  master_bathroom_camera_1_sub:  rtsp://admin:egypt1@192.168.5.174:554/12
-
-  master_bathroom_camera_2_main:
-  - ffmpeg:rtsp://admin:egypt1@192.168.5.142:554/11#video=copy#audio=copy
-  - ffmpeg:master_bathroom_camera_2_main#audio=opus
-  master_bathroom_camera_2_sub:  rtsp://admin:egypt1@192.168.5.142:554/12
-
-  # Hallway 1 & 2 — ffmpeg source (ONVIF was timing out intermittently)
-  hallway_camera_1_main:
-  - ffmpeg:rtsp://admin:egypt1@192.168.5.245:554/11#video=copy#audio=copy
-  - ffmpeg:hallway_camera_1_main#audio=opus
-  hallway_camera_1_sub:  rtsp://admin:egypt1@192.168.5.245:554/12
-
-  hallway_camera_2_main:
-  - ffmpeg:rtsp://admin:egypt1@192.168.5.248:554/11#video=copy#audio=copy
-  - ffmpeg:hallway_camera_2_main#audio=opus
-  hallway_camera_2_sub:  rtsp://admin:egypt1@192.168.5.248:554/12
-
-  # Kitchen, Master Bedroom, Office — ONVIF working correctly, no changes needed
-  kitchen_camera_1_main:
-  - onvif://admin:egypt1@192.168.5.18:8080
-  - ffmpeg:kitchen_camera_1_main#audio=opus
-  kitchen_camera_1_sub:  rtsp://admin:egypt1@192.168.5.18:554/12
-
-  kitchen_camera_2_main:
-  - onvif://admin:egypt1@192.168.5.64:8080
-  - ffmpeg:kitchen_camera_2_main#audio=opus
-  kitchen_camera_2_sub:  rtsp://admin:egypt1@192.168.5.64:554/12
-
-  master_bedroom_camera_1_main:
-  - onvif://admin:egypt1@192.168.5.236:8080
-  - ffmpeg:master_bedroom_camera_1_main#audio=opus
-  master_bedroom_camera_1_sub:  rtsp://admin:egypt1@192.168.5.236:554/12
-
-  office_camera_main:
-  - onvif://admin:egypt1@192.168.5.55:8080
-  - ffmpeg:office_camera_main#audio=opus
-  office_camera_sub:  rtsp://admin:egypt1@192.168.5.55:554/12
-
-  # -------------------------------------------------------
   # Wyze cameras
   # -------------------------------------------------------
 
   # Living Room — Wyze Cam v3 Pro (HL_CAM3P, 192.168.5.62)
-  # wyze:// P2P working fine, left as-is
+  # Preferred path: wyze:// P2P
   living_room_camera_main:
   - wyze://192.168.5.62?dtls=true&enr=gvnv3V%2FieXQ3b%2FTb&mac=D03F2798D5B3&model=HL_CAM3P&uid=Z6A8GPTL2HBJM1X1111A&quality=hd
   - ffmpeg:living_room_camera_main#audio=opus
   living_room_camera_sub:  wyze://192.168.5.62?dtls=true&enr=gvnv3V%2FieXQ3b%2FTb&mac=D03F2798D5B3&model=HL_CAM3P&uid=Z6A8GPTL2HBJM1X1111A&quality=sd
-  living_room_camera_synology:
-  - living_room_camera_main
-  - ffmpeg:living_room_camera_main#audio=aac
 
   # Front Door — Wyze Cam Pan v3 (HL_PAN3, 192.168.5.177)
-  # Using wyze:// P2P (switched back from direct RTSP)
+  # Preferred path: wyze:// P2P
   front_door_camera_main:
   - wyze://192.168.5.177?dtls=true&enr=LXpAWo3xT%2Bs4ettg&mac=D03F27BCCA2D&model=HL_PAN3&uid=6LZN32SM98X9ULWF111A&quality=hd
   - ffmpeg:front_door_camera_main#audio=opus
   front_door_camera_sub:  wyze://192.168.5.177?dtls=true&enr=LXpAWo3xT%2Bs4ettg&mac=D03F27BCCA2D&model=HL_PAN3&uid=6LZN32SM98X9ULWF111A&quality=sd
-  front_door_camera_synology:
-  - front_door_camera_main
-  - ffmpeg:front_door_camera_main#audio=aac
 
   # -------------------------------------------------------
   # Other cameras
@@ -144,18 +86,14 @@ streams:
   # Scrypted handles transcoding via h264_videotoolbox for HomeKit)
   # -------------------------------------------------------
 
-  # Garage Outside Camera — Reolink RLC-823A 16X (192.168.5.84)
-  garage_outside_camera_main: rtsp://admin:Egyptian1975@192.168.5.84:554/h264Preview_01_main
-  garage_outside_camera_sub:  rtsp://admin:Egyptian1975@192.168.5.84:554/h264Preview_01_sub
-
   # Eufy garage camera (192.168.5.179)
   eufy_garage_camera_1_main: rtsp://Sharif_Nassar275:Egyptian_0221975@192.168.5.179/live0
   eufy_garage_camera_1_sub:  rtsp://Sharif_Nassar275:Egyptian_0221975@192.168.5.179/live0
 
   # August/3rd-party front doorbell (192.168.5.91)
   # STATUS: ON HOLD — RTSP port 554 timing out, needs investigation
-  front_doorbell_main: rtsp://192.168.5.91:554/live/stream0
-  front_doorbell_sub:  rtsp://192.168.5.91:554/live/stream
+  front_doorbell_main: rtsp://192.168.5.91:554/live/stream
+  front_doorbell_sub:  rtsp://192.168.5.91:554/live/stream0
 
   # -------------------------------------------------------
   # Roborock vacuums
