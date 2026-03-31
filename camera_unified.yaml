@@ -2,8 +2,7 @@
 # Unified Cameras via go2rtc (FFmpeg)
 # File: /config/camera_unified.yaml
 #
-# Covers: ONVIF, Wyze, Eufy cameras via Mac Mini go2rtc
-#         (192.168.5.87:8554 RTSP)
+# Covers: direct RTSP cameras plus Wyze/Eufy cameras via Mac Mini go2rtc
 #
 # NOT included here (use native HA integration):
 #   - Reolink cameras → Settings > Integrations > Reolink
@@ -13,40 +12,42 @@
 # ==========================================================
 
 # ----------------------------------------------------------
-# ONVIF Cameras (GF-PH200 / Hipcam) via go2rtc
+# ONVIF Cameras (GF-PH200 / Hipcam) direct to camera RTSP
+# Entity names stay unchanged so existing HA dashboard cards and motion bindings
+# do not need to be renamed when go2rtc is removed from this path.
 # ----------------------------------------------------------
 
 - platform: ffmpeg
   name: master_bathroom_camera_1_main
-  input: rtsp://192.168.5.87:8554/master_bathroom_camera_1_main
+  input: rtsp://admin:<password>@192.168.5.174:554/11
 
 - platform: ffmpeg
   name: master_bathroom_camera_2_main
-  input: rtsp://192.168.5.87:8554/master_bathroom_camera_2_main
+  input: rtsp://admin:<password>@192.168.5.142:554/11
 
 - platform: ffmpeg
   name: master_bedroom_camera_1_main
-  input: rtsp://192.168.5.87:8554/master_bedroom_camera_1_main
+  input: rtsp://admin:<password>@192.168.5.236:554/11
 
 - platform: ffmpeg
   name: hallway_camera_1_main
-  input: rtsp://192.168.5.87:8554/hallway_camera_1_main
+  input: rtsp://admin:<password>@192.168.5.245:554/11
 
 - platform: ffmpeg
   name: hallway_camera_2_main
-  input: rtsp://192.168.5.87:8554/hallway_camera_2_main
+  input: rtsp://admin:<password>@192.168.5.248:554/11
 
 - platform: ffmpeg
   name: kitchen_camera_1_main
-  input: rtsp://192.168.5.87:8554/kitchen_camera_1_main
+  input: rtsp://admin:<password>@192.168.5.18:554/11
 
 - platform: ffmpeg
   name: kitchen_camera_2_main
-  input: rtsp://192.168.5.87:8554/kitchen_camera_2_main
+  input: rtsp://admin:<password>@192.168.5.64:554/11
 
 - platform: ffmpeg
   name: office_camera_main
-  input: rtsp://192.168.5.87:8554/office_camera_main
+  input: rtsp://admin:<password>@192.168.5.55:554/11
 
 # ----------------------------------------------------------
 # Wyze Cameras via go2rtc (wyze:// → RTSP rebroadcast)
@@ -55,11 +56,11 @@
 
 - platform: ffmpeg
   name: living_room_camera_main
-  input: rtsp://192.168.5.87:8554/living_room_camera_main
+  input: rtsp://192.168.1.85:8554/living_room_camera_main
 
 - platform: ffmpeg
   name: front_door_camera_main
-  input: rtsp://192.168.5.87:8554/front_door_camera_main
+  input: rtsp://192.168.1.85:8554/front_door_camera_main
 
 # ----------------------------------------------------------
 # Eufy Garage Camera via go2rtc
@@ -67,7 +68,7 @@
 
 - platform: ffmpeg
   name: eufy_garage_camera_1_main
-  input: rtsp://192.168.5.87:8554/eufy_garage_camera_1_main
+  input: rtsp://192.168.1.85:8554/eufy_garage_camera_1_main
 
 # ----------------------------------------------------------
 # ON HOLD — Front Doorbell (August / 3rd party, 192.168.5.91)
@@ -76,4 +77,4 @@
 
 # - platform: ffmpeg
 #   name: front_doorbell_main
-#   input: rtsp://192.168.5.87:8554/front_doorbell_main
+#   input: rtsp://192.168.1.85:8554/front_doorbell_main

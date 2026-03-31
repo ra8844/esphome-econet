@@ -1,12 +1,15 @@
 /**
  * Scrypted mixin repair script for existing camera devices.
  *
+ * **ALTERNATIVE SETUP PATH:** This script is the repair/alternative path for
+ * existing Scrypted devices. The primary setup path is `scrypted_setup.mjs`.
+ *
  * Use this on a running Scrypted install when cameras already exist but the
  * mixin chain or HomeKit pairing state needs to be repaired.
  *
  * Run via SSH:
- *   scp scrypted_mixins.mjs sn@192.168.5.87:/tmp/
- *   ssh sn@192.168.5.87 'PATH=/opt/homebrew/opt/node@20/bin:$PATH node /tmp/scrypted_mixins.mjs'
+ *   scp scrypted_mixins.mjs sn@192.168.1.85:/tmp/
+ *   ssh sn@192.168.1.85 'PATH=/opt/homebrew/opt/node@20/bin:$PATH node /tmp/scrypted_mixins.mjs'
  *
  * What this does:
  *   1. Enables developer mode on Video Analysis Plugin
