@@ -1,8 +1,13 @@
 /**
  * Scrypted Camera Setup Script
  *
- * Adds all cameras to a fresh native Scrypted install on Mac Mini M1 and
- * applies the required mixins for HomeKit Secure Video.
+ * Adds the Scrypted-managed cameras to a fresh native Scrypted install on the
+ * Mac Mini M1 and applies the required mixins for HomeKit Secure Video.
+ *
+ * Cameras intentionally excluded from this script remain outside the Scrypted
+ * path by design. In particular, Eufy Garage Camera 1 stays on go2rtc for Home
+ * Assistant only, while HomeKit/HKSV/motion continue to come from Eufy via the
+ * HomeBase integration.
  *
  * Run via SSH:
  *   PATH=/opt/homebrew/opt/node@20/bin:$PATH node /tmp/scrypted_setup.mjs
@@ -14,7 +19,7 @@
  *   - All plugins installed via: npx scrypted install <plugin> 127.0.0.1
  *
  * Plugins required:
- *   @scrypted/rtsp, @scrypted/reolink, @scrypted/homekit, @scrypted/coreml
+ *   @scrypted/rtsp, @scrypted/onvif, @scrypted/reolink, @scrypted/homekit, @scrypted/coreml
  *   @scrypted/objectdetector, @scrypted/webrtc, @scrypted/prebuffer-mixin
  *   @scrypted/snapshot, @apocaliss92/scrypted-reolink-native
  *
@@ -30,38 +35,42 @@ import { connectScryptedClient } from "/Users/sn/.npm/_npx/f8ff587849d254b8/node
 //   Use the returned "token" field here (or set SCRYPTED_TOKEN env var).
 const API_TOKEN = process.env.SCRYPTED_TOKEN || "<paste-token-here>";
 
-const RTSP_CAMERAS = [
-  // ── Hipcam knockoff cameras (ONVIF → go2rtc RTSP → Scrypted) ─────────────
-  // go2rtc connects ONVIF (port 8080), transcodes PCMA→Opus, rebroadcasts RTSP
-  // CoreML on M1 Neural Engine handles motion detection for these cameras
-  { name: "Master Bathroom Camera 1", url: "rtsp://192.168.5.87:8554/master_bathroom_camera_1_main" },
-  { name: "Master Bathroom Camera 2", url: "rtsp://192.168.5.87:8554/master_bathroom_camera_2_main" },
-  { name: "Master Bedroom Camera 1",  url: "rtsp://192.168.5.87:8554/master_bedroom_camera_1_main" },
-  { name: "Hallway Camera 1",         url: "rtsp://192.168.5.87:8554/hallway_camera_1_main" },
-  { name: "Hallway Camera 2",         url: "rtsp://192.168.5.87:8554/hallway_camera_2_main" },
-  { name: "Kitchen Camera 1",         url: "rtsp://192.168.5.87:8554/kitchen_camera_1_main" },
-  { name: "Kitchen Camera 2",         url: "rtsp://192.168.5.87:8554/kitchen_camera_2_main" },
-  { name: "Office Camera",            url: "rtsp://192.168.5.87:8554/office_camera_main" },
-
-  // ── Wyze cameras (wyze:// P2P → go2rtc RTSP → Scrypted) ──────────────────
-  // go2rtc handles Wyze P2P natively. CoreML replaces wyze-bridge motion.
-  { name: "Living Room Camera",  url: "rtsp://192.168.5.87:8554/living_room_camera_main" },
-  { name: "Front Door Camera",   url: "rtsp://192.168.5.87:8554/front_door_camera_main" },
+const ONVIF_CAMERAS = [
+  // ── Hipcam knockoff cameras (direct ONVIF → Scrypted) ────────────────────
+  // These cameras expose ONVIF-T motion events, so Scrypted should connect
+  // directly to the cameras instead of consuming the go2rtc RTSP rebroadcast.
+  { name: "Master Bathroom Camera 1", ip: "192.168.5.174" },
+  { name: "Master Bathroom Camera 2", ip: "192.168.5.142" },
+  { name: "Master Bedroom Camera 1",  ip: "192.168.5.236" },
+  { name: "Hallway Camera 1",         ip: "192.168.5.245" },
+  { name: "Hallway Camera 2",         ip: "192.168.5.248" },
+  { name: "Kitchen Camera 1",         ip: "192.168.5.18" },
+  { name: "Kitchen Camera 2",         ip: "192.168.5.64" },
+  { name: "Office Camera",            ip: "192.168.5.55" },
 ];
 
-// ── Garage Outside Camera — @scrypted/reolink via go2rtc ────────────────────
-// Routes through go2rtc (rtsp://192.168.5.87:8554/garage_outside_camera_main)
-// instead of directly to the camera (rtsp://192.168.5.84:554/...).
-//
-// WHY go2rtc is required for this camera (Reolink RLC-823A 16X):
-//   The camera runs at 2560x1440 (H.264 High profile-level-id=640033 / High 5.1)
-//   which HomeKit does not support. Scrypted must transcode to 1920x1080 at
-//   profile-level-id=640028 (High 4.0) via h264_videotoolbox (Apple GPU).
-//   After any ffmpeg crash, retrying the direct RTSP connection (port 554)
-//   results in "Connection refused" for 15-20 seconds while the camera cleans
-//   up the previous session — HomeKit's 30s session timeout expires during this
-//   window. go2rtc maintains a persistent RTSP connection to the camera and
-//   rebroadcasts locally, so Scrypted reconnects in milliseconds.
+const RTSP_CAMERAS = [
+  // ── Wyze cameras (wyze:// P2P → go2rtc RTSP → Scrypted) ──────────────────
+  // go2rtc handles Wyze P2P natively. Scrypted consumes the go2rtc RTSP
+  // rebroadcast, then exposes its own rebroadcast URL for Surveillance
+  // Station. Synology motion is the preferred source once configured; CoreML
+  // remains installed here as the fallback path. These cameras do not provide
+  // ONVIF motion directly.
+  { name: "Living Room Camera",  url: "rtsp://192.168.1.85:8554/living_room_camera_main" },
+  { name: "Front Door Camera",   url: "rtsp://192.168.1.85:8554/front_door_camera_main" },
+];
+
+const EXCLUDED_CAMERAS = [
+  {
+    name: "Eufy Garage Camera 1",
+    reason: "Home Assistant uses go2rtc, but HomeKit/HKSV/motion stay on Eufy + HomeBase instead of Scrypted.",
+  },
+];
+
+// ── Garage Outside Camera — @scrypted/reolink direct to camera RTSP ─────────
+// This camera stays on @scrypted/reolink because reolink-native overuses
+// Baichuan sessions on the RLC-823A 16X. Video now uses the camera's native
+// RTSP profiles directly instead of a go2rtc rebroadcast.
 //
 // WHY @scrypted/reolink instead of @apocaliss92/scrypted-reolink-native:
 //   The reolink-native plugin uses the Baichuan binary protocol, which opens
@@ -74,9 +83,11 @@ const RTSP_CAMERAS = [
 //   polling to the camera's port 80 API — independent of the RTSP video path.
 const GARAGE_OUTSIDE_CAMERA = {
   name: "Garage Outside Camera",
-  url:  "rtsp://192.168.5.87:8554/garage_outside_camera_main",
-  sub:  "rtsp://192.168.5.87:8554/garage_outside_camera_sub",
+  url:  "RTSP h264Preview_01_main",
+  sub:  "RTSP h264Preview_01_sub",
   ip:   "192.168.5.84",
+  mainRtspKey: "h264Preview_01_main",
+  subRtspKey: "h264Preview_01_sub",
 };
 
 const REOLINK_CAMERAS = [
@@ -98,6 +109,24 @@ async function applyRtspMixins(device, mixins) {
     mixins.coreml.id,
   ]);
   await device.putSetting("homekit:standalone", true);
+}
+
+async function applyOnvifMixins(device, mixins) {
+  await device.setMixins([
+    mixins.rebroadcast.id,
+    mixins.webrtc.id,
+    mixins.snapshot.id,
+    mixins.homekit.id,
+    mixins.onvifPtz.id,
+  ]);
+  await device.putSetting("homekit:standalone", true);
+  await device.putSetting("prebuffer:enabledStreams", ["MainStreamProfile"]);
+  await device.putSetting("prebuffer:defaultStream", "MainStreamProfile");
+  await device.putSetting("prebuffer:remoteStream", "SecondStreamProfile");
+  await device.putSetting("prebuffer:lowResolutionStream", "SecondStreamProfile");
+  await device.putSetting("prebuffer:recordingStream", "MainStreamProfile");
+  await device.putSetting("prebuffer:remoteRecordingStream", "SecondStreamProfile");
+  await device.putSetting("prebuffer:synthenticStreams", []);
 }
 
 async function applyReolinkMixins(device, mixins) {
@@ -123,36 +152,61 @@ async function main() {
   console.log("Connected.\n");
 
   const rtspPlugin = sm.getDeviceByName("RTSP Camera Plugin");
+  const onvifPlugin = sm.getDeviceByName("ONVIF Camera Plugin");
   const reolinkPlugin = sm.getDeviceByName("Reolink Camera Plugin");
   const reolinkNative = sm.getDeviceByName("Reolink Native");
   const rebroadcast = sm.getDeviceByName("Rebroadcast Plugin");
   const snapshot = sm.getDeviceByName("Snapshot Plugin");
   const webrtc = sm.getDeviceByName("WebRTC Plugin");
   const homekit = sm.getDeviceByName("HomeKit");
+  const onvifPtz = sm.getDeviceByName("ONVIF PTZ");
   const coreml = sm.getDeviceByName("CoreML Object Detection");
   const objectDetector = sm.getDeviceByName("Video Analysis Plugin");
 
   if (!rtspPlugin) throw new Error("RTSP Camera Plugin not found — is @scrypted/rtsp installed?");
+  if (!onvifPlugin) throw new Error("ONVIF Camera Plugin not found — is @scrypted/onvif installed?");
   if (!reolinkPlugin) throw new Error("Reolink Camera Plugin not found — is @scrypted/reolink installed?");
   if (!reolinkNative) throw new Error("Reolink Native not found — is @apocaliss92/scrypted-reolink-native installed?");
   if (!rebroadcast) throw new Error("Rebroadcast Plugin not found — is @scrypted/prebuffer-mixin installed?");
   if (!snapshot) throw new Error("Snapshot Plugin not found — is @scrypted/snapshot installed?");
   if (!webrtc) throw new Error("WebRTC Plugin not found — is @scrypted/webrtc installed?");
   if (!homekit) throw new Error("HomeKit not found — is @scrypted/homekit installed?");
+  if (!onvifPtz) throw new Error("ONVIF PTZ not found — is @scrypted/onvif installed?");
   if (!coreml) throw new Error("CoreML Object Detection not found — is @scrypted/coreml installed?");
   if (!objectDetector) throw new Error("Video Analysis Plugin not found — is @scrypted/objectdetector installed?");
 
-  const mixins = { rebroadcast, snapshot, webrtc, homekit, coreml, objectDetector };
+  const mixins = { rebroadcast, snapshot, webrtc, homekit, onvifPtz, coreml, objectDetector };
 
   console.log("Enabling Video Analysis developer mode and linking it to CoreML ...");
   await objectDetector.putSetting("developerMode", true);
   await coreml.setMixins([objectDetector.id]);
 
   console.log(`RTSP Plugin ID: ${rtspPlugin.id}`);
+  console.log(`ONVIF Plugin ID: ${onvifPlugin.id}`);
   console.log(`Reolink Plugin ID: ${reolinkPlugin.id}`);
   console.log(`Reolink Native ID: ${reolinkNative.id}\n`);
 
-  console.log("=== Adding RTSP cameras (Hipcam + Wyze via go2rtc) ===");
+  console.log("=== Adding ONVIF cameras (direct camera connection) ===");
+  for (const cam of ONVIF_CAMERAS) {
+    try {
+      const id = await onvifPlugin.createDevice({
+        username: "admin",
+        password: process.env.HIPCAM_PASSWORD || "<hipcam-password>",
+        ip: cam.ip,
+        httpPort: "8080",
+      });
+      const device = sm.getDeviceById(id);
+      await sleep(10000);
+      await applyOnvifMixins(device, mixins);
+      await sleep(1000);
+      console.log(`  ✓ ${cam.name}  (id=${id})`);
+    } catch (e) {
+      console.log(`  ✗ ${cam.name}  — ${e.message}`);
+    }
+  }
+
+  console.log("\n=== Adding RTSP cameras (Wyze via go2rtc) ===");
+  console.log("    Synology motion remains the preferred path after the separate Synology webhook setup.");
   for (const cam of RTSP_CAMERAS) {
     try {
       const id = await rtspPlugin.createDevice({ name: cam.name, url: cam.url });
@@ -162,7 +216,7 @@ async function main() {
       await applyRtspMixins(device, mixins);
       await sleep(2000);
       const streamName = cam.url.split("/").pop();
-      await device.putSetting("snapshot:snapshotUrl", `http://192.168.5.87:1984/api/stream.jpeg?src=${streamName}`);
+      await device.putSetting("snapshot:snapshotUrl", `http://192.168.1.85:1984/api/frame.jpeg?src=${streamName}`);
       await device.putSetting("snapshot:snapshotsFromPrebuffer", "Disabled");
       console.log(`  ✓ ${cam.name}  (id=${id})`);
     } catch (e) {
@@ -170,21 +224,21 @@ async function main() {
     }
   }
 
-  console.log("\n=== Adding Garage Outside Camera (@scrypted/reolink via go2rtc) ===");
+  console.log("\n=== Cameras intentionally excluded from Scrypted setup ===");
+  for (const cam of EXCLUDED_CAMERAS) {
+    console.log(`  - ${cam.name}: ${cam.reason}`);
+  }
+
+  console.log("\n=== Adding Garage Outside Camera (@scrypted/reolink direct RTSP) ===");
   try {
     const id = await reolinkPlugin.createDevice({ name: GARAGE_OUTSIDE_CAMERA.name });
     const device = sm.getDeviceById(id);
-    await device.putSetting("urls", [GARAGE_OUTSIDE_CAMERA.url]);
     await sleep(10000);
 
     await applyReolinkMixins(device, mixins);
     await sleep(2000);
 
-    await device.putSetting("prebuffer:synthenticStreams", [
-      GARAGE_OUTSIDE_CAMERA.url,
-      GARAGE_OUTSIDE_CAMERA.sub,
-    ]);
-    await sleep(2000);
+    await device.putSetting("prebuffer:synthenticStreams", []);
 
     const main = GARAGE_OUTSIDE_CAMERA.url;
     const sub = GARAGE_OUTSIDE_CAMERA.sub;
@@ -195,12 +249,9 @@ async function main() {
     await device.putSetting("prebuffer:recordingStream", main);
     await device.putSetting("prebuffer:remoteRecordingStream", sub);
 
-    await device.putSetting(`prebuffer:rtspParser-${main}`, "FFmpeg (TCP)");
-    await device.putSetting(`prebuffer:ffmpegInputArguments-${main}`, "-hwaccel videotoolbox");
-    await device.putSetting(`prebuffer:ffmpegOutputArguments-${main}`, "-vf scale=1920:1080 -c:v h264_videotoolbox -b:v 4000k -profile:v high -level:v 4.0 -realtime 1 -c:a copy");
-
-    await device.putSetting(`prebuffer:syntheticInputIdKey-${main}`, "h264Preview_01_main");
-    await device.putSetting(`prebuffer:syntheticInputIdKey-${sub}`, "h264Preview_01_sub");
+    await device.putSetting(`prebuffer:rtspParser-${GARAGE_OUTSIDE_CAMERA.mainRtspKey}`, "FFmpeg (TCP)");
+    await device.putSetting(`prebuffer:ffmpegInputArguments-${GARAGE_OUTSIDE_CAMERA.mainRtspKey}`, "-hwaccel videotoolbox");
+    await device.putSetting(`prebuffer:ffmpegOutputArguments-${GARAGE_OUTSIDE_CAMERA.mainRtspKey}`, "-vf scale=1920:1080 -c:v h264_videotoolbox -b:v 4000k -profile:v high -level:v 4.0 -realtime 1 -c:a copy");
 
     const garageCamPass = encodeURIComponent(process.env.GARAGE_CAMERA_PASSWORD || "<garage-camera-password>");
     await device.putSetting("snapshot:snapshotUrl", `http://${GARAGE_OUTSIDE_CAMERA.ip}/cgi-bin/api.cgi?cmd=Snap&channel=0&user=admin&password=${garageCamPass}`);
