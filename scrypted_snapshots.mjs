@@ -6,59 +6,82 @@
  * created and mixins are added, or any time you need to re-apply snapshot
  * settings.
  *
- * Cameras intentionally outside the Scrypted path are excluded here by design.
- * In particular, Eufy Garage Camera 1 stays on go2rtc for Home Assistant only,
- * while HomeKit/HKSV/motion continue to come from Eufy via HomeBase.
+ * All go2rtc-backed cameras (Hipcam x8) use the go2rtc JPEG API for snapshots.
+ * go2rtc maintains its own persistent connection and caches the latest frame
+ * independently of Scrypted's FFmpeg pipeline, preventing the black flash in
+ * HomeKit during prebuffer restarts.
+ *
+ * Reolink cameras use the direct camera HTTP snapshot API (not via go2rtc).
  *
  * Run via SSH:
- *   PATH=/opt/homebrew/opt/node@20/bin:$PATH SCRYPTED_TOKEN=<token> REOLINK_PASSWORD=<pass> \
- *     node /tmp/scrypted_snapshots.mjs
+ *   scp scrypted_snapshots.mjs sn@192.168.1.85:/tmp/
+ *   ssh sn@192.168.1.85 'PATH=/opt/homebrew/opt/node@20/bin:$PATH REOLINK_PASSWORD=<pass> node /tmp/scrypted_snapshots.mjs'
  */
 
-import { connectScryptedClient } from "/Users/sn/.npm/_npx/f8ff587849d254b8/node_modules/@scrypted/client/dist/packages/client/src/index.js";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { execFileSync } from "node:child_process";
 
-const API_TOKEN              = process.env.SCRYPTED_TOKEN         || "<paste-token-here>";
-const REOLINK_PASSWORD       = process.env.REOLINK_PASSWORD       || "<reolink-password>";
-const GARAGE_CAMERA_PASSWORD = process.env.GARAGE_CAMERA_PASSWORD || "<garage-camera-password>";
-const GO2RTC                 = "http://192.168.1.85:1984";
+function findClientEntry() {
+  const output = execFileSync(
+    "find",
+    [path.join(os.homedir(), ".npm", "_npx"), "-path", "*/@scrypted/client/dist/packages/client/src/index.js"],
+    { encoding: "utf8" },
+  ).trim();
+  const [entry] = output.split("\n").filter(Boolean);
+  if (!entry) throw new Error("Unable to locate @scrypted/client under ~/.npm/_npx.");
+  return entry;
+}
 
-// go2rtc JPEG snapshot: http://192.168.1.85:1984/api/frame.jpeg?src=<stream>
-// Wyze still uses go2rtc JPEG snapshots even though Surveillance Station now
-// consumes Scrypted rebroadcast URLs and is the preferred motion source.
+const { connectScryptedClient } = await import(findClientEntry());
+
+function readLogin() {
+  const loginPath = path.join(os.homedir(), ".scrypted", "login.json");
+  const login = JSON.parse(fs.readFileSync(loginPath, "utf8"));
+  const entry = login["127.0.0.1:10443"];
+  if (!entry?.username || !entry?.token)
+    throw new Error(`Missing 127.0.0.1:10443 credentials in ${loginPath}.`);
+  return entry;
+}
+
+const REOLINK_PASSWORD = process.env.REOLINK_PASSWORD || "<reolink-password>";
+const GO2RTC           = "http://127.0.0.1:1984";
+
+// All Hipcam cameras — snapshot via go2rtc JPEG API (sub stream: always warm, Frigate pulls it continuously)
 const GO2RTC_SNAPSHOTS = [
-  { name: "Living Room Camera",       stream: "living_room_camera_main"       },
-  { name: "Front Door Camera",        stream: "front_door_camera_main"        },
+  { name: "Master Bathroom Camera 1", stream: "master_bathroom_camera_1_sub" },
+  { name: "Master Bathroom Camera 2", stream: "master_bathroom_camera_2_sub" },
+  { name: "Master Bedroom Camera 1",  stream: "master_bedroom_camera_1_sub"  },
+  { name: "Hallway Camera 1",         stream: "hallway_camera_1_sub"         },
+  { name: "Hallway Camera 2",         stream: "hallway_camera_2_sub"         },
+  { name: "Kitchen Camera 1",         stream: "kitchen_camera_1_sub"         },
+  { name: "Kitchen Camera 2",         stream: "kitchen_camera_2_sub"         },
+  { name: "Office Camera",            stream: "office_camera_sub"            },
 ];
 
-const EXCLUDED_CAMERAS = [
-  {
-    name: "Eufy Garage Camera 1",
-    reason: "Not managed by Scrypted for HomeKit/HKSV/motion; Eufy + HomeBase own that path.",
-  },
-];
-
-// Camera HTTP JPEG API — direct to camera (not via go2rtc)
-// Only include cameras with a known direct snapshot endpoint here.
-const DIRECT_SNAPSHOTS = [
-  { name: "Garage Outside Camera",   ip: "192.168.5.84",  password: GARAGE_CAMERA_PASSWORD },
+// Reolink cameras — direct camera HTTP snapshot API (not via go2rtc)
+const REOLINK_SNAPSHOTS = [
+  { name: "Garage Outside Camera",   ip: "192.168.5.84",  password: REOLINK_PASSWORD },
   { name: "Courtyard Doorbell",      ip: "192.168.5.141", password: REOLINK_PASSWORD },
   { name: "Backyard Doorbell",       ip: "192.168.5.74",  password: REOLINK_PASSWORD },
   { name: "Garage Outside Doorbell", ip: "192.168.5.163", password: REOLINK_PASSWORD },
 ];
 
 async function main() {
+  const entry = readLogin();
   console.log("Connecting to Scrypted at https://127.0.0.1:10443 ...");
   const sdk = await connectScryptedClient({
     baseUrl: "https://127.0.0.1:10443",
     pluginId: "@scrypted/core",
-    username: "snassar",
-    password: API_TOKEN,
+    username: entry.username,
+    password: entry.token,
   });
   const sm = sdk.systemManager;
   console.log("Connected.\n");
 
-  // ── go2rtc JPEG API — Wyze cameras ────────────────────────────────────────
-  console.log("=== Applying go2rtc JPEG snapshot URLs (Wyze cameras) ===");
+  // ── go2rtc JPEG API — Hipcam cameras ─────────────────────────────────────
+  console.log("=== Applying go2rtc JPEG snapshot URLs (Hipcam) ===");
   for (const cam of GO2RTC_SNAPSHOTS) {
     const device = sm.getDeviceByName(cam.name);
     if (!device) { console.log(`  ✗ ${cam.name} — not found`); continue; }
@@ -66,20 +89,15 @@ async function main() {
     try {
       await device.putSetting("snapshot:snapshotUrl", url);
       await device.putSetting("snapshot:snapshotsFromPrebuffer", "Disabled");
-      console.log(`  ✓ ${cam.name}`);
+      console.log(`  ✓ ${cam.name}  →  ${url}`);
     } catch (e) {
       console.log(`  ✗ ${cam.name} — ${e.message}`);
     }
   }
 
-  console.log("\n=== Cameras intentionally excluded from snapshot updates ===");
-  for (const cam of EXCLUDED_CAMERAS) {
-    console.log(`  - ${cam.name}: ${cam.reason}`);
-  }
-
-  // ── Direct camera HTTP JPEG API (Reolink cameras) ─────────────────────────
-  console.log("\n=== Applying direct camera HTTP snapshot URLs ===");
-  for (const cam of DIRECT_SNAPSHOTS) {
+  // ── Direct camera HTTP JPEG API — Reolink cameras ────────────────────────
+  console.log("\n=== Applying direct camera HTTP snapshot URLs (Reolink) ===");
+  for (const cam of REOLINK_SNAPSHOTS) {
     const device = sm.getDeviceByName(cam.name);
     if (!device) { console.log(`  ✗ ${cam.name} — not found`); continue; }
     const url = `http://${cam.ip}/cgi-bin/api.cgi?cmd=Snap&channel=0&user=admin&password=${encodeURIComponent(cam.password)}`;

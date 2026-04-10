@@ -1,24 +1,27 @@
 # go2rtc configuration — Mac Mini M1 (192.168.1.85)
 # Live file location: /Users/sn/docker/go2rtc.yaml
-# Last updated: 2026-03-25
+# Last updated: 2026-04-08
 #
-# go2rtc runs as root LaunchDaemon: /Library/LaunchDaemons/com.go2rtc.plist
+# go2rtc runs as user LaunchAgent: ~/Library/LaunchAgents/com.go2rtc.plist
 # PATH includes /opt/homebrew/bin (required for ffmpeg: sources)
 # Web UI / API: http://192.168.1.85:1984
 # RTSP rebroadcast: rtsp://192.168.1.85:8554/<stream_name>
 #
-# Source types used:
-#   wyze://     — Wyze P2P direct connection
-#   rtsp://     — Direct RTSP (Reolink, August doorbell, Eufy)
+# Architecture:
+#   Hipcam (8)   — go2rtc RTSP rebroadcast (main /11, sub /12)
+#                  Scrypted: RTSP plugin → go2rtc main+sub
+#                  Frigate (Mac Mini Docker): go2rtc sub for detect, main for record
+#                  Motion: Frigate → MQTT → dummy switch → HKSV
+#   Wyze (2)     — go2rtc wyze:// P2P → RTSP rebroadcast
+#                  192.168.5.62  = Living Room Camera (HL_CAM3P)
+#                  192.168.5.177 = Front Door Camera  (HL_PAN3)
+#   Eufy (1)     — direct RTSP → go2rtc → Scrypted RTSP plugin
+#                  192.168.5.85 (static DHCP)
+#                  Motion: Frigate → MQTT → dummy switch → HKSV
+#   August (1)   — ON HOLD (device unreachable)
 #
-# Audio transcoding: ffmpeg:<stream>#audio=opus or #audio=aac
-#   Wyze streams are transcoded once in go2rtc for downstream consumers.
-#   Synology-specific Wyze variants use AAC instead of Opus.
 #
-# Keepalive: /Library/LaunchDaemons/com.go2rtc.keepalive.plist runs
-#   ~/go2rtc-keepalive.sh as a system daemon using localhost go2rtc endpoints.
-#   This avoids breakage when the Mac Mini LAN IP changes and survives reboots
-#   without requiring an interactive macOS login.
+# Keepalive: ~/go2rtc-keepalive.sh keeps persistent streams warm.
 
 log:
   format: color
@@ -28,10 +31,10 @@ log:
 
 rtsp:
   listen: :8554
-  default_query: video&audio&transport=tcp
+  default_query: video&audio
   fix_timestamps: true
   drop_corrupted: true
-  queue_size: 128
+  queue_size: 64
 
 webrtc:
   listen: :8555/tcp
@@ -60,40 +63,125 @@ onvif:
 streams:
 
   # -------------------------------------------------------
-  # Wyze cameras
+  # Wyze cameras — go2rtc wyze:// DTLS P2P
+  # 192.168.5.62  = Living Room Camera (Wyze Cam v3 Pro, HL_CAM3P)
+  # 192.168.5.177 = Front Door Camera  (Wyze Cam Pan v3, HL_PAN3)
   # -------------------------------------------------------
 
-  # Living Room — Wyze Cam v3 Pro (HL_CAM3P, 192.168.5.62)
-  # Preferred path: wyze:// P2P
   living_room_camera_main:
-  - wyze://192.168.5.62?dtls=true&enr=gvnv3V%2FieXQ3b%2FTb&mac=D03F2798D5B3&model=HL_CAM3P&uid=Z6A8GPTL2HBJM1X1111A&quality=hd
-  - ffmpeg:living_room_camera_main#audio=opus
-  living_room_camera_sub:  wyze://192.168.5.62?dtls=true&enr=gvnv3V%2FieXQ3b%2FTb&mac=D03F2798D5B3&model=HL_CAM3P&uid=Z6A8GPTL2HBJM1X1111A&quality=sd
+  - wyze://192.168.5.62?dtls=true&enr=gvnv3V%2FieXQ3b%2FTb&mac=D03F2798D5B3&model=HL_CAM3P&uid=Z6A8GPTL2HBJM1X1111A&subtype=hd
+  - ffmpeg:living_room_camera_main#hardware#video=copy#audio=opus
+  living_room_camera_sub:
+  - wyze://192.168.5.62?dtls=true&enr=gvnv3V%2FieXQ3b%2FTb&mac=D03F2798D5B3&model=HL_CAM3P&uid=Z6A8GPTL2HBJM1X1111A&subtype=sd
+  - ffmpeg:living_room_camera_sub#video=copy#audio=copy
 
-  # Front Door — Wyze Cam Pan v3 (HL_PAN3, 192.168.5.177)
-  # Preferred path: wyze:// P2P
   front_door_camera_main:
-  - wyze://192.168.5.177?dtls=true&enr=LXpAWo3xT%2Bs4ettg&mac=D03F27BCCA2D&model=HL_PAN3&uid=6LZN32SM98X9ULWF111A&quality=hd
-  - ffmpeg:front_door_camera_main#audio=opus
-  front_door_camera_sub:  wyze://192.168.5.177?dtls=true&enr=LXpAWo3xT%2Bs4ettg&mac=D03F27BCCA2D&model=HL_PAN3&uid=6LZN32SM98X9ULWF111A&quality=sd
-
+  - wyze://192.168.5.177?dtls=true&enr=LXpAWo3xT%2Bs4ettg&mac=D03F27BCCA2D&model=HL_PAN3&uid=6LZN32SM98X9ULWF111A&subtype=hd
+  - ffmpeg:front_door_camera_main#hardware#video=copy#audio=opus
+  front_door_camera_sub:
+  - wyze://192.168.5.177?dtls=true&enr=LXpAWo3xT%2Bs4ettg&mac=D03F27BCCA2D&model=HL_PAN3&uid=6LZN32SM98X9ULWF111A&subtype=sd
+  - ffmpeg:front_door_camera_sub#video=copy#audio=copy
+  
   # -------------------------------------------------------
-  # Other cameras
-  # -------------------------------------------------------
-
-  # -------------------------------------------------------
-  # Reolink cameras (direct RTSP — no go2rtc audio transcoding needed,
-  # Scrypted handles transcoding via h264_videotoolbox for HomeKit)
+  # Master Bathroom cameras — RTSP via go2rtc (ONVIF not working on these models)
+  # Scrypted uses RTSP plugin + dummy switch for motion/HKSV
   # -------------------------------------------------------
 
-  # Eufy garage camera (192.168.5.179)
-  eufy_garage_camera_1_main: rtsp://Sharif_Nassar275:Egyptian_0221975@192.168.5.179/live0
-  eufy_garage_camera_1_sub:  rtsp://Sharif_Nassar275:Egyptian_0221975@192.168.5.179/live0
+  master_bathroom_camera_1_main:
+  - ffmpeg:rtsp://admin:egypt1@192.168.5.174:554/11#hardware#video=copy#audio=opus
+  master_bathroom_camera_1_sub:
+  - ffmpeg:rtsp://admin:egypt1@192.168.5.174:554/12#video=copy#audio=copy
 
+  master_bathroom_camera_2_main:
+  - ffmpeg:rtsp://admin:egypt1@192.168.5.142:554/11#hardware#video=copy#audio=opus
+  master_bathroom_camera_2_sub:
+  - ffmpeg:rtsp://admin:egypt1@192.168.5.142:554/12#video=copy#audio=copy
+
+  # -------------------------------------------------------
+  # Hipcam cameras — RTSP → go2rtc RTSP rebroadcast
+  # Scrypted: RTSP plugin → go2rtc main+sub
+  # Frigate (Mac Mini Docker): go2rtc sub for detect, main for record
+  # Motion: Frigate → MQTT → frigate_bridge → dummy switch → HKSV
+  # -------------------------------------------------------
+
+  office_camera_main:
+  - ffmpeg:rtsp://admin:egypt1@192.168.5.55:554/11#hardware#video=copy#audio=opus
+  office_camera_sub:
+  - ffmpeg:rtsp://admin:egypt1@192.168.5.55:554/12#video=copy#audio=copy
+
+  master_bedroom_camera_1_main:
+  - ffmpeg:rtsp://admin:egypt1@192.168.5.236:554/11#hardware#video=copy#audio=opus
+  master_bedroom_camera_1_sub:
+  - ffmpeg:rtsp://admin:egypt1@192.168.5.236:554/12#video=copy#audio=copy
+
+  hallway_camera_1_main:
+  - ffmpeg:rtsp://admin:egypt1@192.168.5.245:554/11#hardware#video=copy#audio=opus
+  hallway_camera_1_sub:
+  - ffmpeg:rtsp://admin:egypt1@192.168.5.245:554/12#video=copy#audio=copy
+
+  hallway_camera_2_main:
+  - ffmpeg:rtsp://admin:egypt1@192.168.5.248:554/11#hardware#video=copy#audio=opus
+  hallway_camera_2_sub:
+  - ffmpeg:rtsp://admin:egypt1@192.168.5.248:554/12#video=copy#audio=copy
+
+  kitchen_camera_1_main:
+  - ffmpeg:rtsp://admin:egypt1@192.168.5.18:554/11#hardware#video=copy#audio=opus
+  kitchen_camera_1_sub:
+  - ffmpeg:rtsp://admin:egypt1@192.168.5.18:554/12#video=copy#audio=copy
+
+  kitchen_camera_2_main:
+  - ffmpeg:rtsp://admin:egypt1@192.168.5.64:554/11#hardware#video=copy#audio=opus
+  kitchen_camera_2_sub:
+  - ffmpeg:rtsp://admin:egypt1@192.168.5.64:554/12#video=copy#audio=copy
+
+  # -------------------------------------------------------
+  # Eufy garage camera — RTSP → go2rtc RTSP → Synology Surveillance Station
+  # NOTE: Currently on main subnet 192.168.1.162 (SB380 homebase wired). Will move to 192.168.5.x once GS108T VLAN configured.
+  # Credentials: Sharif_Nassar275 / Egyptian_0221975
+  eufy_garage_camera_1_main:
+  - rtsp://Sharif_Nassar275:Egyptian_0221975@192.168.1.162/live0
+  - ffmpeg:eufy_garage_camera_1_main#hardware#video=copy#audio=opus
+  eufy_garage_camera_1_sub:
+  - ffmpeg:eufy_garage_camera_1_main#hardware#video=h264#width=640#height=360
+
+  # -------------------------------------------------------
+  # Reolink cameras — RTSP → go2rtc → Frigate
+  # Garage Outside Doorbell: 192.168.5.163 (wired)
+  # Garage Outside Camera:   192.168.5.84  (WiFi)
+  # Courtyard Doorbell:      192.168.5.141 (WiFi)
+  # Backyard Doorbell:       192.168.5.74  (WiFi)
+  # -------------------------------------------------------
+
+  garage_outside_doorbell_main:
+  - ffmpeg:rtsp://admin:Egyptian1975@192.168.1.163:554/h264Preview_01_main#hardware#video=copy#audio=opus
+  garage_outside_doorbell_sub:
+  - ffmpeg:rtsp://admin:Egyptian1975@192.168.1.163:554/h264Preview_01_sub#video=copy#audio=copy
+
+  garage_outside_camera_main:
+  - ffmpeg:rtsp://admin:Egyptian1975@192.168.5.84:554/h264Preview_01_main#hardware#video=copy#audio=opus
+  garage_outside_camera_sub:
+  - ffmpeg:rtsp://admin:Egyptian1975@192.168.5.84:554/h264Preview_01_sub#video=copy#audio=copy
+
+  courtyard_doorbell_main:
+  - ffmpeg:rtsp://admin:Egyptian1975@192.168.5.141:554/h264Preview_01_main#hardware#video=copy#audio=opus
+  courtyard_doorbell_sub:
+  - ffmpeg:rtsp://admin:Egyptian1975@192.168.5.141:554/h264Preview_01_sub#video=copy#audio=copy
+
+  backyard_doorbell_main:
+  - ffmpeg:rtsp://admin:Egyptian1975@192.168.5.74:554/h264Preview_01_main#hardware#video=copy#audio=opus
+  backyard_doorbell_sub:
+  - ffmpeg:rtsp://admin:Egyptian1975@192.168.5.74:554/h264Preview_01_sub#video=copy#audio=copy
+
+  # -------------------------------------------------------
   # August/3rd-party front doorbell (192.168.5.91)
-  # STATUS: ON HOLD — RTSP port 554 timing out, needs investigation
-  front_doorbell_main: rtsp://192.168.5.91:554/live/stream
-  front_doorbell_sub:  rtsp://192.168.5.91:554/live/stream0
+  # STATUS: ON HOLD — device unreachable as of 2026-03-27, needs investigation
+  # -------------------------------------------------------
+  front_doorbell_main:
+  - rtsp://192.168.5.91:554/live/stream
+  - ffmpeg:front_doorbell_main#audio=opus
+  front_doorbell_sub:
+  - rtsp://192.168.5.91:554/live/stream0
+  - ffmpeg:front_doorbell_sub#audio=opus
 
   # -------------------------------------------------------
   # Roborock vacuums
@@ -101,7 +189,5 @@ streams:
   Basboosa: roborock://mqtt-us-2.roborock.com:8883?u=6R86jzDBp3pzVuXJhvCAAA&s=2ljiM4&k=pq9jC1ZE&did=1ubIUrs6ByyS292PxgEvqn&key=nHjdhXIr0FvwMq3t&pin=1475
   Billya:   roborock://mqtt-us-2.roborock.com:8883?u=6R86jzDBp3pzVuXJhvCAAA&s=2ljiM4&k=pq9jC1ZE&did=1uF3mQACMUpBH85rpoZU0P&key=ZHuhOpVYiOgZmeBk&pin=
 
-ptz:
-  # Wyze Pan v3 PTZ — still using wyze:// for PTZ control even though streaming uses RTSP
-  front_door_camera_main:
-    - wyze://192.168.5.177?dtls=true&enr=LXpAWo3xT%2Bs4ettg&mac=D03F27BCCA2D&model=HL_PAN3&uid=6LZN32SM98X9ULWF111A
+# ptz: section removed — Wyze Pan v3 PTZ now handled by Mac Mini Scrypted
+# wyze: section removed — Wyze cameras moved to Mac Mini Scrypted (wyze-native plugin)
