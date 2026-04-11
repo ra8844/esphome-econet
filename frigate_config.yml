@@ -67,7 +67,7 @@ cameras:
     detect:
       width: 640
       height: 360
-      fps: 5
+      fps: 3
 
   # -------------------------------------------------------
   # Eufy Garage Camera — via go2rtc
@@ -187,7 +187,7 @@ cameras:
 
   # -------------------------------------------------------
   # Reolink cameras — via go2rtc on Mac Mini
-  # Outdoor — continuous recording, fps 5
+  # Outdoor — continuous recording, fps 3
   # -------------------------------------------------------
 
   garage_outside_doorbell:
@@ -202,7 +202,7 @@ cameras:
     detect:
       width: 640
       height: 360
-      fps: 5
+      fps: 3
 
   # garage_outside_camera: disabled — camera offline (192.168.5.84 unreachable)
   # Re-enable once camera is power cycled and back on network
@@ -219,7 +219,7 @@ cameras:
     detect:
       width: 640
       height: 360
-      fps: 5
+      fps: 3
 
   backyard_doorbell:
     ffmpeg:
@@ -233,4 +233,4 @@ cameras:
     detect:
       width: 640
       height: 360
-      fps: 5
+      fps: 3
