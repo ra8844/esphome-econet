@@ -168,9 +168,9 @@ streams:
   - ffmpeg:rtsp://admin:Egyptian1975@192.168.5.141:554/h264Preview_01_sub#video=copy
 
   backyard_doorbell_main:
-  - ffmpeg:rtsp://admin:Egyptian1975@192.168.5.74:554/h264Preview_01_main#hardware#video=copy#audio=opus
+  - ffmpeg:rtsp://admin:Egyptian1975@192.168.5.68:554/h264Preview_01_main#hardware#video=copy#audio=opus
   backyard_doorbell_sub:
-  - ffmpeg:rtsp://admin:Egyptian1975@192.168.5.74:554/h264Preview_01_sub#video=copy
+  - ffmpeg:rtsp://admin:Egyptian1975@192.168.5.68:554/h264Preview_01_sub#video=copy
 
   # -------------------------------------------------------
   # August/3rd-party front doorbell (192.168.5.91)

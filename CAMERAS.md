@@ -103,7 +103,7 @@ Exceptions (connect directly to camera, not via go2rtc for video):
 | Camera | Location | IP | Scrypted ID |
 |--------|----------|----|-------------|
 | Courtyard Doorbell | Front courtyard | 192.168.5.141 | 259 |
-| Backyard Doorbell | Backyard | 192.168.5.74 | 265 |
+| Backyard Doorbell | Backyard | 192.168.5.68 | 265 |
 | Garage Outside Doorbell | Garage exterior | 192.168.5.163 (wired, GS108T port 3, VLAN 10) | 290 |
 
 **Credentials:** username `admin` (see local credentials store)
