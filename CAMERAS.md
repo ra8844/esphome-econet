@@ -104,7 +104,7 @@ Exceptions (connect directly to camera, not via go2rtc for video):
 |--------|----------|----|-------------|
 | Courtyard Doorbell | Front courtyard | 192.168.5.141 | 259 |
 | Backyard Doorbell | Backyard | 192.168.5.74 | 265 |
-| Garage Outside Doorbell | Garage exterior | needs new IP — wired to GS108T port 3, factory reset required to get VLAN 10 DHCP lease | 290 |
+| Garage Outside Doorbell | Garage exterior | 192.168.5.163 (wired, GS108T port 3, VLAN 10) | 290 |
 
 **Credentials:** username `admin` (see local credentials store)
 
