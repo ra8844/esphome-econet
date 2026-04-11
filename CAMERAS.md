@@ -16,7 +16,13 @@ Cameras are split across three systems:
 
 **go2rtc keepalive** (`~/go2rtc-keepalive.sh`) holds all main and sub streams warm permanently so Frigate and Scrypted never see cold stream errors.
 
-**Frigate** pulls main streams from go2rtc for both detect AND record (single stream per camera, `roles: [detect, record]`). CoreML ZMQ detector runs on Apple Silicon. Motion events published to MQTT.
+**Frigate** uses split streams from go2rtc per camera:
+- **sub stream → `roles: [detect]`** — lower resolution, less CPU to decode, same detection accuracy. Connected continuously on all cameras.
+- **main stream → `roles: [record]`** — full resolution footage saved to disk.
+- **Outdoor cameras** (front_door, garage_outside_doorbell, garage_outside_camera, courtyard_doorbell, backyard_doorbell): continuous recording, fps 5. Main stream connected continuously.
+- **Indoor cameras** (all others): event-only recording, fps 2. Main stream only opened by Frigate when a detection event triggers recording — dropped again after the post-record buffer expires. Sub stream stays connected continuously for detection.
+- **Eufy garage camera**: no real sub stream — main used for both detect and record (event-only, fps 2).
+- CoreML ZMQ detector runs on Apple Silicon. Motion events published to MQTT.
 
 **Scrypted** pulls main streams from go2rtc RTSP rebroadcast for HomeKit Secure Video. Motion comes from Frigate → MQTT → `frigate_bridge.mjs` → dummy switch → Custom Motion Sensor mixin.
 
@@ -41,15 +47,15 @@ Camera Hardware
       │
       ├─── Reolink doorbells (3) ──► go2rtc (RTSP h264Preview_01_main + sub → rebroadcast)
       │     Courtyard .141               │   keepalive holds main+sub warm
-      │     Backyard .74                 ├─► Frigate — main stream, roles:[detect,record], CoreML ZMQ
-      │     Garage Outside .163          │         → MQTT motion events
+      │     Backyard .74                 ├─► Frigate — sub→detect (fps:5), main→record (continuous)
+      │     Garage Outside .163          │         CoreML ZMQ → MQTT motion events
       │                                  ├─► Scrypted — reolink-native plugin (direct Baichuan, not go2rtc)
       │                                  │         instant doorbell press, two-way audio, HKSV
       │                                  └─► HA — native Reolink integration (direct to camera)
       │                                         PTZ, two-way audio, siren, spotlight (NOT motion)
       │
       ├─── Garage Outside Camera ──► go2rtc (RTSP h264Preview_01_main + sub → rebroadcast)
-      │     RLC-823A 16X .84             ├─► Frigate — main stream, roles:[detect,record], CoreML ZMQ
+      │     RLC-823A 16X .84             ├─► Frigate — sub→detect (fps:5), main→record (continuous)
       │                                  ├─► Scrypted — @scrypted/reolink (direct to camera)
       │                                  │         VideoToolbox transcode → HKSV
       │                                  └─► HA — native Reolink integration (direct to camera)
@@ -57,19 +63,20 @@ Camera Hardware
       │
       ├─── Hipcam cameras (8) ──────► go2rtc (RTSP /11 main + /12 sub → rebroadcast)
       │     Kitchen, Hallway,            │   keepalive holds main+sub warm
-      │     Bathrooms, Bedroom,          ├─► Frigate — main stream, roles:[detect,record], CoreML ZMQ
-      │     Office                       │         → MQTT → frigate_bridge → dummy switch
+      │     Bathrooms, Bedroom,          ├─► Frigate — sub→detect (fps:2), main→record (event-only)
+      │     Office                       │         CoreML ZMQ → MQTT → frigate_bridge → dummy switch
       │                                  └─► Scrypted — @scrypted/rtsp → go2rtc main
       │                                         dummy switch → Custom Motion Sensor → HKSV
       │
       ├─── Wyze cameras (2) ────────► go2rtc (wyze:// DTLS P2P → rebroadcast)
       │     Living Room .62              │   keepalive holds main+sub warm
-      │     Front Door .177              ├─► Frigate — main stream, roles:[detect,record], CoreML ZMQ
+      │     Front Door .177              ├─► Frigate — sub→detect, main→record
+      │                                  │   Front Door: continuous fps:5 | Living Room: event-only fps:2
       │                                  └─► Scrypted — @scrypted/rtsp → go2rtc main
       │
       ├─── Eufy garage camera ──────► go2rtc (RTSP live0 → rebroadcast)
-      │     .85                          │   keepalive holds main+sub warm
-      │                                  └─► Frigate — main stream, roles:[detect,record], CoreML ZMQ
+      │     .162                         │   keepalive holds main+sub warm
+      │                                  └─► Frigate — sub→detect (fps:2), main→record (event-only)
       │
       └─── Front doorbell (August) ─► go2rtc (RTSP source)
                 [ON HOLD — device unreachable 2026-03-27]
@@ -97,15 +104,16 @@ Exceptions (connect directly to camera, not via go2rtc for video):
 |--------|----------|----|-------------|
 | Courtyard Doorbell | Front courtyard | 192.168.5.141 | 259 |
 | Backyard Doorbell | Backyard | 192.168.5.74 | 265 |
-| Garage Outside Doorbell | Garage exterior | 192.168.1.163 (wired ethernet, 192.168.1.x subnet) | 290 |
+| Garage Outside Doorbell | Garage exterior | needs new IP — wired to GS108T port 3, factory reset required to get VLAN 10 DHCP lease | 290 |
 
 **Credentials:** username `admin` (see local credentials store)
 
 **go2rtc:** RTSP rebroadcast via `h264Preview_01_main` / `h264Preview_01_sub`
 - Stream names: `courtyard_doorbell_main/sub`, `backyard_doorbell_main/sub`, `garage_outside_doorbell_main/sub`
 
-**Frigate:** pulls `main` stream from go2rtc (`roles: [detect, record]`) — AI object detection (person/car/cat/dog)
-- Single stream per camera; go2rtc holds both main and sub warm via keepalive
+**Frigate:** split streams from go2rtc — sub→detect, main→record
+- Outdoor Reolink doorbells: continuous recording, fps 5
+- Detection: person/car/cat/dog via CoreML ZMQ
 - Motion events published to MQTT → HA Frigate integration
 
 **HA:** Native Reolink integration — connects **directly to cameras** for PTZ control, two-way audio, siren, spotlight
@@ -162,7 +170,7 @@ These settings are automatically applied by `scrypted_setup.mjs` at camera creat
 **go2rtc:** RTSP rebroadcast via `h264Preview_01_main` / `h264Preview_01_sub`
 - Stream names: `garage_outside_camera_main/sub`
 
-**Frigate:** pulls `main` stream from go2rtc (`roles: [detect, record]`) — AI object detection
+**Frigate:** split streams from go2rtc — sub→detect (fps:5), main→record (continuous)
 - go2rtc holds both main and sub warm via keepalive
 
 **HA:** Native Reolink integration — connects **directly to camera** for PTZ control, siren, spotlight
@@ -226,7 +234,7 @@ Brand: GF-PH200 / Hipcam (cheap ONVIF knockoff cameras)
   - Mixin chain: Rebroadcast, WebRTC, Snapshot, Custom Motion Sensor, HomeKit
   - Motion: Frigate → MQTT → `frigate_bridge.mjs` → dummy switch → Custom Motion Sensor
   - NO CoreML in Scrypted — Frigate provides all object detection
-- Frigate: `rtsp://192.168.1.85:8554/<name>_main` for both detect and record (`roles: [detect, record]`); CoreML ZMQ detector
+- Frigate: sub→detect (`rtsp://192.168.1.85:8554/<name>_sub`, fps:2, event-only recording), main→record (`rtsp://192.168.1.85:8554/<name>_main`); CoreML ZMQ detector
 - Home Assistant: via go2rtc RTSP (or direct RTSP — unchanged)
 
 Scrypted IDs: Master Bathroom Camera 1=238, Master Bathroom Camera 2=237, Master Bedroom Camera 1=231, Hallway Camera 1=240, Hallway Camera 2=239, Kitchen Camera 1=242, Kitchen Camera 2=243, Office Camera=182.
@@ -253,7 +261,7 @@ kitchen_camera_1_main:
 - Standalone HomeKit accessory mode
 
 **Snapshot source:** go2rtc JPEG API — `http://192.168.1.85:1984/api/frame.jpeg?src=<name>_sub`
-- Sub stream is always warm (Frigate pulls it continuously), giving instant snapshots without waking the main stream
+- Sub stream is always warm (Frigate pulls it for detection continuously), giving instant snapshots without waking the main stream
 - Applied by `scrypted_snapshots.mjs`
 
 **Known limitations:**
@@ -302,12 +310,12 @@ kitchen_camera_1_main:
 
 | Camera | Location | IP |
 |--------|----------|----|
-| Eufy Garage Camera 1 | Garage interior | 192.168.1.162 (SB380 homebase wired to main subnet; will move to 192.168.5.x once GS108T VLAN configured) |
+| Eufy Garage Camera 1 | Garage interior | 192.168.5.162 (SB380 homebase wired to GS108T port 2, VLAN 10) |
 
 **go2rtc config:**
 ```yaml
 eufy_garage_camera_1_main:
-  - rtsp://Sharif_Nassar275:Egyptian_0221975@192.168.1.162/live0
+  - rtsp://Sharif_Nassar275:Egyptian_0221975@192.168.5.162/live0
   - ffmpeg:eufy_garage_camera_1_main#hardware#video=copy#audio=opus
 eufy_garage_camera_1_sub:
   - ffmpeg:eufy_garage_camera_1_main#hardware#video=h264#width=640#height=360
@@ -377,40 +385,45 @@ RX6600AX (gateway)
    MoCA adapter ──── MoCA ──── MoCA adapter
                                      │
                               Netgear GS108T
-                              ┌──────────────────────────────────────┐
-                              │ Port 1  MoCA → RX6600AX      TRUNK   │ (tagged VLAN 1 + 10 + 1733)
-                              │ Port 2  Eufy SB380            VLAN10  │ (untagged VLAN 10)
-                              │ Port 3  Garage Outside Doorbell VLAN10│ (untagged VLAN 10)
-                              │ Port 4  Garage Outside Camera  VLAN10 │ (untagged VLAN 10)
-                              │ Port 5  (available)                   │
-                              │ Port 6  Courtyard Doorbell     VLAN10 │ (future — currently WiFi)
-                              │ Port 7  RX6600AX "Garage" WiFi  TRUNK │ (tagged VLAN 1 + 10 + 1733)
-                              │ Port 8  RX6600AX "Kitchen" WiFi TRUNK │ (tagged VLAN 1 + 10 + 1733)
-                              └──────────────────────────────────────┘
+                              ┌─────────────────────────────────────────────────────┐
+                              │ Port 1  MoCA → RX6600AX           TRUNK             │
+                              │         VLAN 1 untagged, VLAN 10+1733 tagged        │
+                              │ Port 2  Eufy SB380 (192.168.5.162) IoT untagged     │
+                              │ Port 3  Garage Outside Doorbell    IoT untagged     │
+                              │ Port 4  Garage Outside Camera      IoT untagged     │
+                              │ Port 5  (available)                                 │
+                              │ Port 6  Courtyard Doorbell (future) IoT untagged    │
+                              │ Port 7  RX6600AX "Garage" WiFi PT  TRUNK            │
+                              │         VLAN 1 untagged, VLAN 10+1733 tagged        │
+                              │ Port 8  RX6600AX "Kitchen" WiFi PT TRUNK            │
+                              │         VLAN 1 untagged, VLAN 10+1733 tagged        │
+                              └─────────────────────────────────────────────────────┘
 ```
 
-**GS108T VLAN configuration (as configured 2026-04-10):**
-- VLAN 1 (Primary): ports 1, 7, 8 tagged
-- VLAN 10 (Camera/Courtyardson): ports 1, 7, 8 tagged; ports 2, 3, 4, 6 untagged
-- VLAN 1733 (Guest): ports 1, 7, 8 tagged; all others not member
-- PVID: ports 2, 3, 4, 6 → 10; all others → 1
+**GS108T VLAN configuration (as configured 2026-04-11):**
+
+| VLAN | Name    | g1 | g2 | g3 | g4 | g5 | g6 | g7 | g8 |
+|------|---------|----|----|----|----|----|----|----|----|
+| 1    | Primary | U  | —  | —  | —  | —  | —  | U  | U  |
+| 10   | IoT     | T  | U  | U  | U  | U  | U  | T  | T  |
+| 1733 | Guest   | T  | —  | —  | —  | —  | —  | T  | T  |
+| **PVID** |     | **1** | **10** | **10** | **10** | **10** | **10** | **1** | **1** |
 
 **GS108T web UI setup steps:**
 
 1. **Create VLANs** — `Switching → VLAN → Basic → VLAN Configuration`
-   - Add VLAN 10, Name: `Courtyardson`, Type: Static
+   - Add VLAN 10, Name: `IoT`, Type: Static
    - Add VLAN 1733, Name: `Guest`, Type: Static
    - (VLAN 1 Default already exists — do not modify)
 
 2. **Set VLAN membership** — `Switching → VLAN → Advanced → VLAN Membership`
-   - Select VLAN 10: set g1=T, g2=U, g3=U, g4=U, g6=U, g7=T, g8=T; all others blank
+   - Select VLAN 10: set g1=T, g2=U, g3=U, g4=U, g5=U, g6=U, g7=T, g8=T; all others blank
+   - Select VLAN 1: set g1=U, g7=U, g8=U; all others blank
    - Select VLAN 1733: set g1=T, g7=T, g8=T; all others blank
-   - Select VLAN 1: set g1=T, g7=T, g8=T; all others blank (override default)
 
 3. **Set PVIDs** — `Switching → VLAN → Advanced → Port PVID Configuration`
-   - Select g2 → set PVID Configured = 10, Apply
-   - Repeat for g3, g4, g6
-   - Leave g1, g5, g7, g8 at PVID 1
+   - Set g2, g3, g4, g5, g6 → PVID 10
+   - Set g1, g7, g8 → PVID 1
    - Leave Ingress Filtering = Disabled, Port Priority = 0
 
 4. **Set DNS** — `System → Management → DNS`
@@ -423,9 +436,9 @@ RX6600AX (gateway)
    - NTP Server 2: `0.pool.ntp.org`
    - NTP Server 3: `1.pool.ntp.org`
 
-**RX6600AX "Kitchen" WiFi point (Port 8):** Receives trunk with all VLANs. Broadcasts both Courtyard_Main (VLAN 1) and Courtyardson (VLAN 10) SSIDs. Devices connecting to Courtyardson get 192.168.5.x addresses. Ethernet ports on this unit in mesh AP mode are always trunk — cannot assign individual VLANs per port.
+**RX6600AX WiFi points (Ports 7, 8):** Receive trunk with VLAN 1 untagged and VLAN 10 + 1733 tagged. Broadcast all three SSIDs (Primary, IoT, Guest). Devices connecting to IoT SSID get 192.168.5.x addresses; devices on Primary get 192.168.1.x.
 
-**Kitchen cameras note:** Kitchen Camera 1 (.18) and Kitchen Camera 2 (.64) connect via WiFi to the Courtyardson SSID broadcast by the RX6600AX "Kitchen" WiFi point. The RX6600AX receives VLAN 10 tagged on port 6 of the GS108T and bridges it to the Courtyardson SSID — kitchen cameras get 192.168.5.x addresses via DHCP from the RX6600AX gateway.
+**Kitchen cameras note:** Kitchen Camera 1 (.18) and Kitchen Camera 2 (.64) connect via WiFi to the IoT SSID broadcast by the RX6600AX "Kitchen" WiFi point on port 8 — cameras get 192.168.5.x addresses via DHCP.
 
 ---
 

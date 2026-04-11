@@ -40,23 +40,30 @@ snapshots:
 cameras:
   # -------------------------------------------------------
   # Wyze cameras — via go2rtc on Mac Mini
+  # Indoor — event-only recording, fps 2
   # -------------------------------------------------------
 
   living_room_camera:
     ffmpeg:
       inputs:
         - path: rtsp://192.168.1.85:8554/living_room_camera_main
-          roles: [ detect, record ]
+          roles: [ record ]
+        - path: rtsp://192.168.1.85:8554/living_room_camera_sub
+          roles: [ detect ]
     detect:
       width: 640
       height: 360
-      fps: 5
+      fps: 2
 
   front_door_camera:
     ffmpeg:
       inputs:
         - path: rtsp://192.168.1.85:8554/front_door_camera_main
-          roles: [ detect, record ]
+          roles: [ record ]
+        - path: rtsp://192.168.1.85:8554/front_door_camera_sub
+          roles: [ detect ]
+    record:
+      enabled: true
     detect:
       width: 640
       height: 360
@@ -64,6 +71,7 @@ cameras:
 
   # -------------------------------------------------------
   # Eufy Garage Camera — via go2rtc
+  # Indoor — event-only recording, fps 2
   # -------------------------------------------------------
 
   garage_camera_1:
@@ -74,121 +82,140 @@ cameras:
     detect:
       width: 640
       height: 360
-      fps: 5
+      fps: 2
 
   # -------------------------------------------------------
   # Hipcam cameras — via go2rtc on Mac Mini
+  # Indoor — event-only recording, fps 2
   # -------------------------------------------------------
 
   office_camera:
     ffmpeg:
       inputs:
         - path: rtsp://192.168.1.85:8554/office_camera_main
-          roles: [ detect, record ]
+          roles: [ record ]
+        - path: rtsp://192.168.1.85:8554/office_camera_sub
+          roles: [ detect ]
     detect:
       width: 640
       height: 360
-      fps: 5
+      fps: 2
 
   master_bedroom_camera_1:
     ffmpeg:
       inputs:
         - path: rtsp://192.168.1.85:8554/master_bedroom_camera_1_main
-          roles: [ detect, record ]
+          roles: [ record ]
+        - path: rtsp://192.168.1.85:8554/master_bedroom_camera_1_sub
+          roles: [ detect ]
     detect:
       width: 640
       height: 360
-      fps: 5
+      fps: 2
 
   hallway_camera_1:
     ffmpeg:
       inputs:
         - path: rtsp://192.168.1.85:8554/hallway_camera_1_main
-          roles: [ detect, record ]
+          roles: [ record ]
+        - path: rtsp://192.168.1.85:8554/hallway_camera_1_sub
+          roles: [ detect ]
     detect:
       width: 640
       height: 360
-      fps: 5
+      fps: 2
 
   hallway_camera_2:
     ffmpeg:
       inputs:
         - path: rtsp://192.168.1.85:8554/hallway_camera_2_main
-          roles: [ detect, record ]
+          roles: [ record ]
+        - path: rtsp://192.168.1.85:8554/hallway_camera_2_sub
+          roles: [ detect ]
     detect:
       width: 640
       height: 360
-      fps: 5
+      fps: 2
 
   kitchen_camera_1:
     ffmpeg:
       inputs:
         - path: rtsp://192.168.1.85:8554/kitchen_camera_1_main
-          roles: [ detect, record ]
+          roles: [ record ]
+        - path: rtsp://192.168.1.85:8554/kitchen_camera_1_sub
+          roles: [ detect ]
     detect:
       width: 640
       height: 360
-      fps: 5
+      fps: 2
 
   kitchen_camera_2:
     ffmpeg:
       inputs:
         - path: rtsp://192.168.1.85:8554/kitchen_camera_2_main
-          roles: [ detect, record ]
+          roles: [ record ]
+        - path: rtsp://192.168.1.85:8554/kitchen_camera_2_sub
+          roles: [ detect ]
     detect:
       width: 640
       height: 360
-      fps: 5
+      fps: 2
 
   master_bathroom_camera_1:
     ffmpeg:
       inputs:
         - path: rtsp://192.168.1.85:8554/master_bathroom_camera_1_main
-          roles: [ detect, record ]
+          roles: [ record ]
+        - path: rtsp://192.168.1.85:8554/master_bathroom_camera_1_sub
+          roles: [ detect ]
     detect:
       width: 640
       height: 360
-      fps: 5
+      fps: 2
 
   master_bathroom_camera_2:
     ffmpeg:
       inputs:
         - path: rtsp://192.168.1.85:8554/master_bathroom_camera_2_main
-          roles: [ detect, record ]
+          roles: [ record ]
+        - path: rtsp://192.168.1.85:8554/master_bathroom_camera_2_sub
+          roles: [ detect ]
     detect:
       width: 640
       height: 360
-      fps: 5
+      fps: 2
 
   # -------------------------------------------------------
   # Reolink cameras — via go2rtc on Mac Mini
+  # Outdoor — continuous recording, fps 5
   # -------------------------------------------------------
 
   garage_outside_doorbell:
     ffmpeg:
       inputs:
         - path: rtsp://192.168.1.85:8554/garage_outside_doorbell_main
-          roles: [ detect, record ]
+          roles: [ record ]
+        - path: rtsp://192.168.1.85:8554/garage_outside_doorbell_sub
+          roles: [ detect ]
+    record:
+      enabled: true
     detect:
       width: 640
       height: 360
       fps: 5
 
-  garage_outside_camera:
-    ffmpeg:
-      inputs:
-        - path: rtsp://192.168.1.85:8554/garage_outside_camera_main
-          roles: [ detect, record ]
-    detect:
-      width: 640
-      height: 360
-      fps: 5
+  # garage_outside_camera: disabled — camera offline (192.168.5.84 unreachable)
+  # Re-enable once camera is power cycled and back on network
 
   courtyard_doorbell:
     ffmpeg:
       inputs:
         - path: rtsp://192.168.1.85:8554/courtyard_doorbell_main
-          roles: [ detect, record ]
+          roles: [ record ]
+        - path: rtsp://192.168.1.85:8554/courtyard_doorbell_sub
+          roles: [ detect ]
+    record:
+      enabled: true
     detect:
       width: 640
       height: 360
@@ -198,7 +225,11 @@ cameras:
     ffmpeg:
       inputs:
         - path: rtsp://192.168.1.85:8554/backyard_doorbell_main
-          roles: [ detect, record ]
+          roles: [ record ]
+        - path: rtsp://192.168.1.85:8554/backyard_doorbell_sub
+          roles: [ detect ]
+    record:
+      enabled: true
     detect:
       width: 640
       height: 360
