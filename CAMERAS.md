@@ -528,96 +528,58 @@ launchctl kickstart gui/$(id -u)/com.frigate-bridge
 Migrating camera server from Mac Mini M1 (192.168.1.85) to Mac Mini M4 (24GB).
 The M4 takes the same static IP. The M1 becomes the daily driver.
 
-### Pre-migration (on M1, while still running)
+**Strategy: Time Machine restore** — same Apple Silicon architecture, full restore including all apps, LaunchAgents, Docker, Scrypted, go2rtc, and settings. No manual reinstall needed.
+
+### Pre-migration (on M1)
 - [ ] Push all config changes to GitHub (`git push`)
-- [ ] Note DHCP reservation for 192.168.1.85 — reassign to M4 MAC address after swap
-- [ ] Export Scrypted login credentials: `cat ~/.scrypted/login.json`
-- [ ] Note Wyze credentials from go2rtc.yaml (already in repo)
+- [ ] Back up M1 to Time Machine (external drive or NAS share)
+- [ ] Confirm backup completed successfully
+- [ ] Note M4 MAC address (System Settings → General → About → scroll to bottom) — needed for DHCP reservation swap
 
-### M4 initial setup
-- [ ] Sign in with same Apple ID (`sn`)
+### M4 setup via Time Machine restore
+- [ ] Power on M4, begin macOS setup
+- [ ] When prompted "Transfer Information to This Mac" — select **From a Time Machine backup**
+- [ ] Select the M1 backup, restore everything (user account, apps, settings)
+- [ ] Complete setup — M4 will have identical environment to M1
+
+### Post-restore steps (on M4)
 - [ ] Enable SSH: `System Settings → General → Sharing → Remote Login`
-- [ ] Install Homebrew: `/bin/bash -c "$(curl -fsSL https://brew.sh/install.sh)"`
-- [ ] Install dependencies:
+- [ ] Open Docker Desktop — accept any license prompts, let it start
+- [ ] Verify all LaunchAgents loaded:
   ```bash
-  brew install go2rtc ffmpeg node@20
-  brew install --cask docker
+  launchctl list | grep -E "go2rtc|scrypted|frigate"
   ```
-- [ ] Open Docker Desktop, complete setup, enable "Start at login"
-
-### go2rtc
-- [ ] Clone repo: `git clone https://github.com/ra8844/esphome-econet.git`
-- [ ] Copy config: `cp ~/esphome-econet/go2rtc.yaml ~/docker/go2rtc.yaml`
-- [ ] Copy LaunchAgent plists from M1:
+- [ ] If any are missing, load manually:
   ```bash
-  scp sn@<m1-new-ip>:~/Library/LaunchAgents/com.go2rtc.plist ~/Library/LaunchAgents/
-  scp sn@<m1-new-ip>:~/Library/LaunchAgents/com.go2rtc-keepalive.plist ~/Library/LaunchAgents/
-  scp sn@<m1-new-ip>:~/go2rtc-keepalive.sh ~/go2rtc-keepalive.sh
+  launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.go2rtc.plist
+  launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.scrypted.plist
+  launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.frigate.detector.plist
+  launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.frigate-bridge.plist
   ```
-- [ ] Load LaunchAgents (see Installing go2rtc LaunchAgent steps above)
-- [ ] Verify: `curl http://localhost:1984/api/streams`
-
-### Docker / Frigate
-- [ ] Create directories:
-  ```bash
-  mkdir -p ~/docker/frigate/config ~/docker/frigate/storage
-  ```
-- [ ] Copy config: `cp ~/esphome-econet/frigate_config.yml ~/docker/frigate/config/config.yml`
-- [ ] Copy docker-compose.yml from M1:
-  ```bash
-  scp sn@<m1-new-ip>:~/docker/docker-compose.yml ~/docker/docker-compose.yml
-  ```
-- [ ] Mount NAS Frigate share (same as M1 setup)
 - [ ] Start Frigate: `cd ~/docker && docker compose up -d`
-- [ ] Verify: `docker ps | grep frigate`
-
-### Apple Silicon Detector
-- [ ] Clone detector: `git clone https://github.com/frigate-nvr/apple-silicon-detector.git ~/apple-silicon-detector`
-- [ ] Install: `cd ~/apple-silicon-detector && make install`
-- [ ] Copy LaunchAgent from M1:
-  ```bash
-  scp sn@<m1-new-ip>:~/Library/LaunchAgents/com.frigate.detector.plist ~/Library/LaunchAgents/
-  ```
-- [ ] Load: `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.frigate.detector.plist`
-- [ ] Verify: `tail -f ~/Library/Logs/FrigateDetector.stderr.log`
-
-### Scrypted
-- [ ] Install Scrypted:
-  ```bash
-  npx -y scrypted install-server
-  ```
-- [ ] Copy LaunchAgent from M1:
-  ```bash
-  scp sn@<m1-new-ip>:~/Library/LaunchAgents/com.scrypted.plist ~/Library/LaunchAgents/
-  ```
-- [ ] Load and start Scrypted LaunchAgent
-- [ ] Open `https://localhost:10443` — set up login
-- [ ] Restore Scrypted plugins and camera config manually (no export/import — redo via scripts)
-- [ ] Run `scrypted_set_prebuffer_sub.mjs` to set sub stream prebuffer on all cameras
-- [ ] Re-pair all HomeKit cameras in Home app (each is standalone — remove old, add new)
-
-### frigate-bridge
-- [ ] Copy from M1:
-  ```bash
-  scp sn@<m1-new-ip>:~/Library/LaunchAgents/com.frigate-bridge.plist ~/Library/LaunchAgents/
-  scp sn@<m1-new-ip>:~/frigate_bridge.mjs ~/frigate_bridge.mjs
-  ```
-- [ ] Load LaunchAgent (see Installing frigate-bridge steps above)
+- [ ] Verify go2rtc: `curl http://localhost:1984/api/streams`
+- [ ] Verify Scrypted: open `https://localhost:10443`
 
 ### Network cutover
-- [ ] Reassign DHCP reservation 192.168.1.85 to M4 MAC address in router
-- [ ] Reboot M4 to pick up new IP
-- [ ] Verify all services respond at 192.168.1.85
-- [ ] Update M1 DHCP reservation to new IP for daily driver use
+- [ ] In router DHCP reservations: reassign 192.168.1.85 to M4 MAC address
+- [ ] Assign M1 a new DHCP reservation for its new role as daily driver
+- [ ] Reboot M4 — picks up 192.168.1.85
+- [ ] Reboot M1 — picks up new IP
 
 ### Post-migration verification
 - [ ] go2rtc streams all active: `http://192.168.1.85:1984`
 - [ ] Frigate cameras all green: `http://192.168.1.85:8971`
 - [ ] Scrypted accessible: `https://192.168.1.85:10443`
-- [ ] CoreML detector active: check `~/Library/Logs/FrigateDetector.stderr.log`
+- [ ] CoreML detector active: `tail ~/Library/Logs/FrigateDetector.stderr.log`
 - [ ] HomeKit cameras all show live view in Home app
 - [ ] HKSV recording working for all cameras
-- [ ] Check `docker stats` — Frigate CPU should be well under 400% on M4
+- [ ] `docker stats` — Frigate CPU should be well under 400% on M4
+
+### HomeKit re-pairing (if needed)
+Time Machine restores Scrypted's HomeKit pairing keys, so cameras may just work. If any cameras show as unresponsive in Home app:
+- [ ] In Home app: remove the camera accessory
+- [ ] In Scrypted: unpair and re-pair the camera to HomeKit
+- [ ] Re-enable HKSV in Home app for that camera
 
 ---
 
