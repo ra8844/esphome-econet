@@ -55,7 +55,7 @@ Camera Hardware
       │                                         PTZ, two-way audio, siren, spotlight (NOT motion)
       │
       ├─── Garage Outside Camera ──► go2rtc (RTSP h264Preview_01_main + sub → rebroadcast)
-      │     RLC-823A 16X .84             ├─► Frigate — sub→detect (fps:5), main→record (continuous)
+      │     RLC-823A 16X .86             ├─► Frigate — sub→detect (fps:3), main→record (continuous)
       │                                  ├─► Scrypted — @scrypted/reolink (direct to camera)
       │                                  │         VideoToolbox transcode → HKSV
       │                                  └─► HA — native Reolink integration (direct to camera)
@@ -163,7 +163,7 @@ These settings are automatically applied by `scrypted_setup.mjs` at camera creat
 
 | Camera | Location | Model | IP | Scrypted ID |
 |--------|----------|-------|----|-------------|
-| Garage Outside Camera | Garage exterior | Reolink RLC-823A 16X | 192.168.5.84 | 75 |
+| Garage Outside Camera | Garage exterior | Reolink RLC-823A 16X | 192.168.5.86 | 75 |
 
 **Credentials:** username `admin` (see local credentials store)
 
@@ -854,7 +854,7 @@ Wyze Camera → go2rtc (wyze:// P2P) → RTSP rtsp://192.168.1.85:8554/<cam>_mai
 
 ### Problem
 
-The Garage Outside Camera (Reolink RLC-823A 16X, 192.168.5.84) was stuck in a continuous reboot
+The Garage Outside Camera (Reolink RLC-823A 16X, 192.168.5.86) was stuck in a continuous reboot
 loop when managed by `@apocaliss92/scrypted-reolink-native`. Root cause: the RLC-823A 16X has
 many channels (main, sub, ext, plus 16× optical zoom channel), causing the Baichuan session
 count to exceed the camera firmware's limit. The camera interprets this as an attack and reboots.
@@ -875,7 +875,7 @@ count to exceed the camera firmware's limit. The camera interprets this as an at
 - **FU-A fragmentation fix**: RTSP parser set to "FFmpeg (TCP)" — Scrypted's native parser fails
   to reassemble large H.264 High profile NAL units from this camera's 2.5K stream.
 - **Rebroadcast port 0**: Auto-assign prevents EADDRINUSE on port 49498 after plugin restart.
-- **Motion detection unaffected**: `@scrypted/reolink` polls `http://192.168.5.84:80` for AI
+- **Motion detection unaffected**: `@scrypted/reolink` polls `http://192.168.5.86:80` for AI
   events independently of the RTSP video path — switching away from reolink-native does not change
   how motion/person/vehicle detection works.
 

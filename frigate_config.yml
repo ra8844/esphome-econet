@@ -204,8 +204,19 @@ cameras:
       height: 360
       fps: 3
 
-  # garage_outside_camera: disabled — camera offline (192.168.5.84 unreachable)
-  # Re-enable once camera is power cycled and back on network
+  garage_outside_camera:
+    ffmpeg:
+      inputs:
+        - path: rtsp://192.168.1.85:8554/garage_outside_camera_main
+          roles: [ record ]
+        - path: rtsp://192.168.1.85:8554/garage_outside_camera_sub
+          roles: [ detect ]
+    record:
+      enabled: true
+    detect:
+      width: 640
+      height: 360
+      fps: 3
 
   courtyard_doorbell:
     ffmpeg:
