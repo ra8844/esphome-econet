@@ -110,6 +110,37 @@ cat rollback-upstream.sh | ssh haos \
   'sudo -n tee /config/esphome/rollback-upstream.sh >/dev/null && sudo -n chmod 755 /config/esphome/rollback-upstream.sh'
 ```
 
+### `sync-mirrors.sh` — push to GitHub + local backup clones
+
+```bash
+./sync-mirrors.sh            # pushes main to origin, then every mirror
+./sync-mirrors.sh <branch>
+```
+
+Mirrors are plain clones on other machines, pushed to directly over SSH:
+
+| remote | host | path |
+|---|---|---|
+| `origin` | GitHub | `ra8844/esphome-econet` |
+| `m4` | SN-MacMini2, 192.168.1.50 | `~/Repositories/esphome-econet` |
+| `cams` | 3923-cams, 192.168.1.85 | `~/Repositories/esphome-econet` |
+
+Each mirror was created once with:
+
+```bash
+git clone git@github.com:ra8844/esphome-econet.git ~/Repositories/esphome-econet
+git -C ~/Repositories/esphome-econet config receive.denyCurrentBranch updateInstead
+```
+
+`updateInstead` lets a push update a non-bare checkout's working tree instead of being
+rejected. The script prints each mirror's resulting HEAD so a silent failure is visible.
+
+> **`upstream` is never pushed to.** It points at the community project
+> (`esphome-econet/esphome-econet`), not your repo — a naive push-to-all-remotes loop
+> would attempt to write to someone else's project. The script excludes `origin` and
+> `upstream` by name, and upstream's push URL is set locally to `DISABLED-fetch-only`
+> as a second guard.
+
 ### Deployment layout (what ESPHome actually reads)
 
 The build does **not** read this repo. `tlwh-rtgh-sn.yaml` declares
