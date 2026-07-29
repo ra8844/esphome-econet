@@ -1,21 +1,31 @@
 ---
-# TLWH entities only. No external_components, no uart, no wifi, no logger.
+substitutions:
+  name: "econet-tlwh"
+  friendly_name: "Tankless Water Heater"
+  device_description: "Rheem Tankless Water Heater"
+  econet_update_interval: 5s
+  tankless_kbtus_per_m3: "35.300"  # Natural Gas = approx 35.300, Propane = approx 88.852
+  water_heater_eco_preset: "None"
+  water_heater_off_preset: "None"
+  water_heater_default_mode_preset: "None"
+  water_heater_default_mode: "water_heater::WATER_HEATER_MODE_GAS"
+  water_heater_set_away_code: "// no-op"
 
 packages:
   econet: !include econet_base.yaml
+  water_heater: !include econet_water_heater_base.yaml
 
-# IMPORTANT: set the tankless controller destination address here
-substitutions:
-  econet_dst_address: "0x10C0"
+econet:
+  dst_address: 0x1040
 
 climate:
   - platform: econet
     id: econet_climate
-    name: "${friendly_name} Control"
-    icon: "mdi:water-boiler"
+    name: None
+    disabled_by_default: true
     visual:
-      min_temperature: "115 °F"
-      max_temperature: "125 °F"
+      min_temperature: "110 °F"
+      max_temperature: "140 °F"
       temperature_step:
         target_temperature: "1.0 °F"
         current_temperature: "0.1 °F"
@@ -26,6 +36,12 @@ climate:
       0: "OFF"
       1: "HEAT"
 
+water_heater:
+  - id: !extend econet_water_heater
+    supported_modes:
+      - "OFF"
+      - GAS
+
 sensor:
   - platform: econet
     name: "Temperature In"
@@ -33,43 +49,79 @@ sensor:
     sensor_datapoint: TEMP__IN
     unit_of_measurement: "°F"
     accuracy_decimals: 1
-    device_class: temperature
-    state_class: measurement
-    entity_category: diagnostic
-    request_mod: 1
-
+    device_class: "temperature"
+    state_class: "measurement"
+    entity_category: "diagnostic"
   - platform: econet
     name: "Temperature Out"
     id: temp_out
     sensor_datapoint: TEMP_OUT
     unit_of_measurement: "°F"
     accuracy_decimals: 1
-    device_class: temperature
-    state_class: measurement
-    entity_category: diagnostic
-    request_mod: 1
-
+    device_class: "temperature"
+    state_class: "measurement"
+    entity_category: "diagnostic"
+  - platform: econet
+    name: "BTUs Used"
+    id: btus
+    sensor_datapoint: WTR_BTUS
+    unit_of_measurement: "kbtu"
+    accuracy_decimals: 3
+    entity_category: "diagnostic"
+    icon: "mdi:flash"
+    on_value:
+      then:
+        - lambda: |-
+            id(total_gas_usage).publish_state(id(btus).state / ${tankless_kbtus_per_m3});
   - platform: econet
     name: "Water Used"
     id: water_used
     sensor_datapoint: WTR_USED
     unit_of_measurement: "gal"
     accuracy_decimals: 1
-    device_class: water
-    state_class: total_increasing
-    entity_category: diagnostic
-    request_mod: 2
-
+    device_class: "water"
+    state_class: "measurement"
+    entity_category: "diagnostic"
+  - platform: econet
+    name: "Flow Rate"
+    id: flow_rate
+    sensor_datapoint: FLOWRATE
+    unit_of_measurement: "gpm"
+    accuracy_decimals: 1
+    state_class: "measurement"
+    entity_category: "diagnostic"
+    filters:
+      # Convert liters per minute to gpm
+      - multiply: 0.264172
+    icon: "mdi:water"
   - platform: econet
     name: "Ignition Cycles"
     id: ignition_cycles
     sensor_datapoint: IGNCYCLS
+    unit_of_measurement: ""
     accuracy_decimals: 0
-    entity_category: diagnostic
+    entity_category: "diagnostic"
     icon: "mdi:heating-coil"
-    request_mod: 2
+  - platform: template
+    name: "Instant BTUs"
+    id: instant_btus
+    unit_of_measurement: "kbtu/hr"
+    accuracy_decimals: 3
+    state_class: "measurement"
+    entity_category: "diagnostic"
+    # yamllint disable rule:line-length
+    lambda: |-
+      return max((id(temp_out).state - id(temp_in).state) * id(flow_rate).state * 8.334 * 60 / 0.92 / 1000, 0.0);
+    # yamllint enable rule:line-length
+    update_interval: ${econet_update_interval}
+  - platform: template
+    name: "Total Gas Usage"
+    id: total_gas_usage
+    unit_of_measurement: "m³"
+    accuracy_decimals: 5
+    state_class: total_increasing
+    device_class: gas
 
-# Only remove these if they exist in econet_base.yaml with these IDs.
 switch:
   - id: !remove alarm_beep
   - id: !remove screen_lock

@@ -1,5 +1,3 @@
-from typing import Any
-
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import climate
@@ -35,49 +33,23 @@ EconetClimate = econet_ns.class_(
 )
 
 
-def ensure_climate_mode_map(value: dict[int, str]) -> dict[int, str]:
-    """Validate climate mode mapping configuration.
-    
-    Ensures that all mapped climate mode values are unique and valid.
-    
-    Args:
-        value: Dictionary mapping device codes to climate modes
-        
-    Returns:
-        Validated configuration dictionary
-        
-    Raises:
-        cv.Invalid: If mapping values are not unique
-    """
+def ensure_climate_mode_map(value):
     cv.check_not_templatable(value)
     options_map_schema = cv.Schema({cv.uint8_t: climate.validate_climate_mode})
     value = options_map_schema(value)
-    all_values = list(value.values())
-    unique_values = set(value.values())
+    all_values = list(value.keys())
+    unique_values = set(value.keys())
     if len(all_values) != len(unique_values):
         raise cv.Invalid("Mapping values must be unique.")
     return value
 
 
-def ensure_option_map(value: dict[int, str]) -> dict[int, str]:
-    """Validate option mapping configuration.
-    
-    Ensures that all mapped option values are unique strings.
-    
-    Args:
-        value: Dictionary mapping device codes to option strings
-        
-    Returns:
-        Validated configuration dictionary
-        
-    Raises:
-        cv.Invalid: If mapping values are not unique
-    """
+def ensure_option_map(value):
     cv.check_not_templatable(value)
     options_map_schema = cv.Schema({cv.uint8_t: cv.string_strict})
     value = options_map_schema(value)
-    all_values = list(value.values())
-    unique_values = set(value.values())
+    all_values = list(value.keys())
+    unique_values = set(value.keys())
     if len(all_values) != len(unique_values):
         raise cv.Invalid("Mapping values must be unique.")
     return value
@@ -112,15 +84,7 @@ CONFIG_SCHEMA = cv.All(
 )
 
 
-async def to_code(config: dict[str, Any]) -> None:
-    """Generate C++ code for Econet climate component.
-    
-    Creates a climate entity that controls temperature, modes, presets, and
-    humidity settings for HVAC systems via Econet datapoints.
-    
-    Args:
-        config: Component configuration dictionary from YAML
-    """
+async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
     await climate.register_climate(var, config)
@@ -149,24 +113,21 @@ async def to_code(config: dict[str, Any]) -> None:
         )
     )
     cg.add(var.set_follow_schedule_id(config[CONF_FOLLOW_SCHEDULE_DATAPOINT]))
-    cg.add(
-        var.set_modes(
-            list(config[CONF_MODES].keys()),
-            list(config[CONF_MODES].values()),
-        )
-    )
-    cg.add(
-        var.set_custom_presets(
-            list(config[CONF_CUSTOM_PRESETS].keys()),
-            list(config[CONF_CUSTOM_PRESETS].values()),
-        )
-    )
-    cg.add(
-        var.set_custom_fan_modes(
-            list(config[CONF_CUSTOM_FAN_MODES].keys()),
-            list(config[CONF_CUSTOM_FAN_MODES].values()),
-        )
-    )
+    if CONF_MODES in config:
+        modes = config[CONF_MODES]
+        cg.add(var.init_modes(len(modes)))
+        for key, value in modes.items():
+            cg.add(var.add_mode(key, value))
+    if CONF_CUSTOM_PRESETS in config:
+        presets = config[CONF_CUSTOM_PRESETS]
+        cg.add(var.init_custom_presets(len(presets)))
+        for key, value in presets.items():
+            cg.add(var.add_custom_preset(key, value))
+    if CONF_CUSTOM_FAN_MODES in config:
+        fan_modes = config[CONF_CUSTOM_FAN_MODES]
+        cg.add(var.init_custom_fan_modes(len(fan_modes)))
+        for key, value in fan_modes.items():
+            cg.add(var.add_custom_fan_mode(key, value))
     cg.add(var.set_current_humidity_id(config[CONF_CURRENT_HUMIDITY_DATAPOINT]))
     cg.add(
         var.set_target_dehumidification_level_id(

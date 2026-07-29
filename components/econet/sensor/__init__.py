@@ -1,5 +1,3 @@
-from typing import Any
-
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import sensor
@@ -33,15 +31,7 @@ CONFIG_SCHEMA = (
 )
 
 
-async def to_code(config: dict[str, Any]) -> None:
-    """Generate C++ code for Econet sensor.
-    
-    Creates a sensor component that reads numeric datapoint values from
-    the Econet device and exposes them to Home Assistant.
-    
-    Args:
-        config: Component configuration dictionary from YAML
-    """
+async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
     await sensor.register_sensor(var, config)

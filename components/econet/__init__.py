@@ -1,5 +1,3 @@
-from typing import Any
-
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome import automation, pins
@@ -46,15 +44,7 @@ DATAPOINT_TRIGGERS = {
 }
 
 
-def assign_declare_id(value: dict[str, Any]) -> dict[str, Any]:
-    """Assign and declare trigger IDs for automation configurations.
-    
-    Args:
-        value: Configuration dictionary containing trigger information
-        
-    Returns:
-        Modified configuration dictionary with declared trigger IDs
-    """
+def assign_declare_id(value):
     value = value.copy()
     value[CONF_TRIGGER_ID] = cv.declare_id(
         DATAPOINT_TRIGGERS[value[CONF_DATAPOINT_TYPE]]
@@ -62,49 +52,17 @@ def assign_declare_id(value: dict[str, Any]) -> dict[str, Any]:
     return value
 
 
-def validate_request_mod_range(value: int) -> int:
-    """Validate that request_mod value is within range [0, 15].
-    
-    Args:
-        value: Request mod value to validate
-        
-    Returns:
-        The validated value
-        
-    Raises:
-        cv.Invalid: If value is outside valid range
-    """
+def validate_request_mod_range(value):
     return cv.int_range(min=0, max=15)(value)
 
 
-def request_mod(value: Any) -> int:
-    """Convert request_mod configuration to integer value.
-    
-    Accepts string "none" or integer value. String "none" converts to -1,
-    otherwise validates as request_mod_range.
-    
-    Args:
-        value: Request mod configuration (string "none" or integer)
-        
-    Returns:
-        Integer representation of request_mod (-1 for "none", 0-15 otherwise)
-    """
+def request_mod(value):
     if isinstance(value, str) and value.lower() == "none":
         return -1
     return validate_request_mod_range(value)
 
 
-def validate_request_mod_update_intervals(value: dict[int, Any]) -> dict[int, Any]:
-    """Validate request_mod update intervals configuration.
-    
-    Maps request_mod values (0-15) to time period millisecond values.
-    
-    Args:
-        value: Dictionary mapping request_mod to time periods
-        
-    Returns:
-        Validated configuration dictionary
-    """
+def validate_request_mod_update_intervals(value):
     cv.check_not_templatable(value)
     options_map_schema = cv.Schema(
         {validate_request_mod_range: cv.positive_time_period_milliseconds}
@@ -113,17 +71,7 @@ def validate_request_mod_update_intervals(value: dict[int, Any]) -> dict[int, An
     return value
 
 
-def validate_request_mod_addresses(value: dict[int, Any]) -> dict[int, Any]:
-    """Validate request_mod addresses configuration.
-    
-    Maps request_mod values (0-15) to device addresses.
-    
-    Args:
-        value: Dictionary mapping request_mod to addresses
-        
-    Returns:
-        Validated configuration dictionary
-    """
+def validate_request_mod_addresses(value):
     cv.check_not_templatable(value)
     options_map_schema = cv.Schema({validate_request_mod_range: cv.uint32_t})
     value = options_map_schema(value)
@@ -152,10 +100,16 @@ CONFIG_SCHEMA = (
                 extra_validators=assign_declare_id,
             ),
             cv.Optional(CONF_FLOW_CONTROL_PIN): pins.gpio_output_pin_schema,
-            cv.Optional(CONF_REQUEST_MOD_UPDATE_INTERVALS): validate_request_mod_update_intervals,
+            cv.Optional(
+                CONF_REQUEST_MOD_UPDATE_INTERVALS
+            ): validate_request_mod_update_intervals,
             cv.Optional(CONF_REQUEST_MOD_ADDRESSES): validate_request_mod_addresses,
-            cv.Optional(CONF_MCU_CONNECTED_TIMEOUT, default="120s"): cv.positive_time_period_milliseconds,
-            cv.Optional(CONF_MCU_CONNECTED_BINARY_SENSOR): esphome_binary_sensor.binary_sensor_schema(
+            cv.Optional(
+                CONF_MCU_CONNECTED_TIMEOUT, default="120s"
+            ): cv.positive_time_period_milliseconds,
+            cv.Optional(
+                CONF_MCU_CONNECTED_BINARY_SENSOR
+            ): esphome_binary_sensor.binary_sensor_schema(
                 esphome_binary_sensor.BinarySensor,
                 device_class=DEVICE_CLASS_CONNECTIVITY,
                 entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
@@ -177,56 +131,31 @@ ECONET_CLIENT_SCHEMA = cv.Schema(
 )
 
 
-async def to_code(config: dict[str, Any]) -> None:
-    """Generate C++ code for Econet component.
-    
-    Registers the Econet component and configures UART communication,
-    datapoint update triggers, and MCU connectivity monitoring.
-    
-    Args:
-        config: Component configuration dictionary from YAML
-    """
-    cg.add_define("USE_API_HOMEASSISTANT_SERVICES")
+async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
-
     await cg.register_component(var, config)
     await uart.register_uart_device(var, config)
-
     cg.add(var.set_src_address(config[CONF_SRC_ADDRESS]))
     cg.add(var.set_dst_address(config[CONF_DST_ADDRESS]))
-
-    # IMPORTANT: convert TimePeriod -> uint32 milliseconds for C++
     if CONF_REQUEST_MOD_UPDATE_INTERVALS in config:
         request_mod_update_intervals = config[CONF_REQUEST_MOD_UPDATE_INTERVALS]
-        cg.add(
-            var.set_request_mod_update_intervals(
-                list(request_mod_update_intervals.keys()),
-                [v.total_milliseconds for v in request_mod_update_intervals.values()],
-            )
-        )
-
+        cg.add(var.init_request_mod_update_intervals(len(request_mod_update_intervals)))
+        for mod, interval in request_mod_update_intervals.items():
+            cg.add(var.add_request_mod_update_interval(mod, interval))
     if CONF_REQUEST_MOD_ADDRESSES in config:
         request_mod_addresses = config[CONF_REQUEST_MOD_ADDRESSES]
-        cg.add(
-            var.set_request_mod_addresses(
-                list(request_mod_addresses.keys()),
-                list(request_mod_addresses.values()),
-            )
-        )
-
+        for mod, address in request_mod_addresses.items():
+            cg.add(var.add_request_mod_address(mod, address))
     if CONF_FLOW_CONTROL_PIN in config:
         pin = await gpio_pin_expression(config[CONF_FLOW_CONTROL_PIN])
         cg.add(var.set_flow_control_pin(pin))
-
     if CONF_MCU_CONNECTED_TIMEOUT in config:
-        cg.add(var.set_mcu_connected_timeout(config[CONF_MCU_CONNECTED_TIMEOUT].total_milliseconds))
-
+        cg.add(var.set_mcu_connected_timeout(config[CONF_MCU_CONNECTED_TIMEOUT]))
     if CONF_MCU_CONNECTED_BINARY_SENSOR in config:
         sens = await esphome_binary_sensor.new_binary_sensor(
             config[CONF_MCU_CONNECTED_BINARY_SENSOR]
         )
         cg.add(var.set_mcu_connected_binary_sensor(sens))
-
     for conf in config.get(CONF_ON_DATAPOINT_UPDATE, []):
         trigger = cg.new_Pvariable(
             conf[CONF_TRIGGER_ID],
