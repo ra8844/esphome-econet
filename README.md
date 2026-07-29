@@ -59,3 +59,87 @@ The esphome CLI can be used to compile and install changes to YAML and/or code v
 ## Need More Help?
 
 If you have further questions or ideas for how to improve ESPHome-econet, please [come visit us on our Discord](https://discord.gg/cRpxtjkQQ3).
+
+---
+
+## Maintenance scripts (this fork)
+
+> This repo shares **no git history** with upstream `esphome-econet/esphome-econet`
+> — `git merge-base HEAD upstream/main` exits 1. Same first-commit messages, different
+> SHAs, because it was created by uploading files rather than forking. `git merge` and
+> GitHub's **Sync fork** therefore do not work. Updates are **content copies** from an
+> upstream release tag.
+
+### `update-from-upstream.sh` — pull community releases
+
+```bash
+./update-from-upstream.sh                    # dry run: releases + what differs
+./update-from-upstream.sh upstream-v3.8.0    # apply that release (no commit, no deploy)
+```
+
+- Fetches upstream branches and tags, namespacing tags as **`upstream-*`**. This is
+  required: the fork carries its own `v3.0.2` / `v3.1.0` / `v3.2.0` tags pointing at
+  different commits, so a bare tag name is ambiguous.
+- Only touches `components/econet/` and the three package YAMLs
+  (`econet_tankless_water_heater.yaml`, `econet_base.yaml`, `econet_water_heater_base.yaml`).
+  **`tlwh-rtgh-sn.yaml` is ours and is never overwritten.**
+- Prints the deploy runbook: push to HAOS → **Validate** → **Install → Manual download**
+  (compiles without flashing) → only then flash → check logs → commit.
+
+**Known breaking change (v3.7.0):** `api: services:` became `api: actions:`, and the two
+are mutually exclusive. A wrapper defining `services:` merged with an upstream base
+defining `actions:` fails validation with *"two or more values in the same group of
+exclusion 'actions'"*. Fix belongs in the wrapper — delete the `services:` block;
+upstream's base supplies all six equivalents as actions.
+
+### `rollback-upstream.sh` — restore the previous deployment
+
+Runs **on the HAOS host**. Restores from the newest `/config/esphome/.pre-upstream-*/`
+backup, whose path is recorded in `/config/esphome/.last-upstream-backup`.
+
+```bash
+ssh haos '/config/esphome/rollback-upstream.sh'          # newest backup
+ssh haos '/config/esphome/rollback-upstream.sh /config/esphome/.pre-upstream-20260729_002649'
+```
+
+Restores files only — **nothing is flashed**. Re-flash from the ESPHome dashboard
+afterwards to put the old firmware back. Deploy the canonical copy with:
+
+```bash
+cat rollback-upstream.sh | ssh haos \
+  'sudo -n tee /config/esphome/rollback-upstream.sh >/dev/null && sudo -n chmod 755 /config/esphome/rollback-upstream.sh'
+```
+
+### Deployment layout (what ESPHome actually reads)
+
+The build does **not** read this repo. `tlwh-rtgh-sn.yaml` declares
+`external_components: type: local` pointing at a path on the HAOS box:
+
+```
+/config/esphome/tlwh-rtgh-sn.yaml                              <- the wrapper (ours)
+/config/esphome/econet_{tankless_water_heater,base,water_heater_base}.yaml
+/config/esphome/external_components/esphome-econet/components/ <- components/econet
+```
+
+Editing this repo changes nothing until the files are copied across. There are also two
+other git checkouts of this repo on the HAOS box with **divergent histories** (`/config`
+itself, and the `external_components` checkout); they are deliberately not git-synced.
+Full background: `sn-home-infra/LESSONS_LEARNED.md`, 2026-07-28.
+
+### Model-specific notes — Rheem WH-TNK2 (`WH-TNK2-00-01-05`)
+
+This unit does not implement `WTR_BTUS` or `FLOWRATE`; upstream polls them anyway,
+producing `UNSUPPORTED` warnings every ~5 s and `nan` sensors. Suppressed in the wrapper:
+
+```yaml
+sensor:
+  - id: !remove btus
+  - id: !remove flow_rate
+  - id: !remove instant_btus
+  - id: !remove total_gas_usage
+```
+
+All four must go together — `instant_btus` is a template whose lambda references
+`id(flow_rate)`, so removing `flow_rate` alone is a compile error, and `total_gas_usage`
+is fed only by `btus`. These go **inside the wrapper's existing top-level `sensor:` key**;
+a second `sensor:` block is a duplicate YAML key.
