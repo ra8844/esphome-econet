@@ -1,5 +1,3 @@
-from typing import Any
-
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import select
@@ -22,25 +20,12 @@ EconetSelect = econet_ns.class_(
 )
 
 
-def ensure_option_map(value: dict[int, str]) -> dict[int, str]:
-    """Validate option mapping configuration.
-    
-    Ensures that all mapped option values are unique strings.
-    
-    Args:
-        value: Dictionary mapping device codes to option strings
-        
-    Returns:
-        Validated configuration dictionary
-        
-    Raises:
-        cv.Invalid: If mapping values are not unique
-    """
+def ensure_option_map(value):
     cv.check_not_templatable(value)
     options_map_schema = cv.Schema({cv.uint8_t: cv.string_strict})
     value = options_map_schema(value)
-    all_values = list(value.values())
-    unique_values = set(value.values())
+    all_values = list(value.keys())
+    unique_values = set(value.keys())
     if len(all_values) != len(unique_values):
         raise cv.Invalid("Mapping values must be unique.")
     return value
@@ -59,19 +44,13 @@ CONFIG_SCHEMA = (
 )
 
 
-async def to_code(config: dict[str, Any]) -> None:
-    """Generate C++ code for Econet select component.
-    
-    Creates a select entity that maps device states/options to user-friendly
-    selections and enables control via Home Assistant.
-    
-    Args:
-        config: Component configuration dictionary from YAML
-    """
+async def to_code(config):
     options_map = config[CONF_OPTIONS]
     var = await select.new_select(config, options=list(options_map.values()))
     await cg.register_component(var, config)
-    cg.add(var.set_select_mappings(list(options_map.keys())))
+    cg.add(var.init_select_mappings(len(options_map)))
+    for key in options_map.keys():
+        cg.add(var.add_select_mapping(key))
     paren = await cg.get_variable(config[CONF_ECONET_ID])
     cg.add(var.set_econet_parent(paren))
     cg.add(var.set_request_mod(config[CONF_REQUEST_MOD]))

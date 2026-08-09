@@ -2,22 +2,30 @@
 
 #include "esphome/core/component.h"
 #include "esphome/core/helpers.h"
-#include "esphome/components/api/custom_api_device.h"
 #include "esphome/components/binary_sensor/binary_sensor.h"
 #include "esphome/components/uart/uart.h"
-#include <queue>
+#include <algorithm>
+#include <array>
+#include <functional>
 #include <map>
+#include <memory>
+#include <string>
 #include <vector>
-#include <set>
 
 namespace esphome {
 namespace econet {
 
+// MSG_HEADER_SIZE (14) + max uint8_t payload len (255) + MSG_CRC_SIZE (2) = 271 bytes.
+// 300 provides a safe margin for protocol overhead.
+static const size_t MAX_MESSAGE_SIZE = 300;
+// The request packet payload is limited to 255 bytes. The payload consists of
+// 2 bytes of overhead (class + property) and 10 bytes per object (2-byte prefix + 8-byte name).
+// (255 - 2) / 10 = 25.3, so 25 is the safe maximum number of objects per request.
+static const uint8_t MAX_OBJECTS_PER_REQUEST = 25;
 static const uint8_t MAX_REQUEST_MODS = 16;
 static const uint32_t DEFAULT_UPDATE_INTERVAL_MILLIS = 30000;
 
-class ReadRequest {
- public:
+struct ReadRequest {
   std::vector<std::string> obj_names;
   uint32_t dst_adr;
   uint32_t src_adr;
@@ -31,9 +39,6 @@ struct EconetDatapointID {
 };
 inline bool operator==(const EconetDatapointID &lhs, const EconetDatapointID &rhs) {
   return lhs.name == rhs.name && lhs.address == rhs.address;
-}
-inline bool operator<(const EconetDatapointID &lhs, const EconetDatapointID &rhs) {
-  return (lhs.name < rhs.name) || ((lhs.name == rhs.name) && (lhs.address < rhs.address));
 }
 
 enum class EconetDatapointType : uint8_t {
@@ -61,7 +66,7 @@ inline bool operator==(const EconetDatapoint &lhs, const EconetDatapoint &rhs) {
     case EconetDatapointType::FLOAT:
       return lhs.value_float == rhs.value_float;
     case EconetDatapointType::TEXT:
-      return lhs.value_string == rhs.value_string;
+      return lhs.value_enum == rhs.value_enum && lhs.value_string == rhs.value_string;
     case EconetDatapointType::ENUM_TEXT:
       return lhs.value_enum == rhs.value_enum;
     case EconetDatapointType::RAW:
@@ -73,8 +78,20 @@ inline bool operator==(const EconetDatapoint &lhs, const EconetDatapoint &rhs) {
 }
 
 struct EconetDatapointListener {
+  uint32_t id;
   EconetDatapointID datapoint_id;
-  std::function<void(EconetDatapoint)> on_datapoint;
+  std::function<void(const EconetDatapoint &)> on_datapoint;
+  bool one_shot;
+};
+
+struct RequestModUpdateInterval {
+  uint8_t mod;
+  uint32_t interval;
+};
+
+struct DatapointEntry {
+  EconetDatapointID id;
+  EconetDatapoint data;
 };
 
 class Econet : public Component, public uart::UARTDevice {
@@ -83,27 +100,21 @@ class Econet : public Component, public uart::UARTDevice {
   void loop() override;
   void dump_config() override;
 
-  void set_src_address(uint32_t address) { src_adr_ = address; }
-  void set_dst_address(uint32_t address) { dst_adr_ = address; }
-  void set_request_mod_addresses(std::vector<uint8_t> request_mods, std::vector<uint32_t> addresses) {
-    for (size_t i = 0; i < MAX_REQUEST_MODS; i++) {
-      request_mod_addresses_[i] = 0;
-    }
-    for (size_t i = 0; i < request_mods.size() && i < addresses.size(); i++) {
-      if (request_mods[i] < MAX_REQUEST_MODS) {
-        request_mod_addresses_[request_mods[i]] = addresses[i];
-      }
+  void set_src_address(uint32_t address) { this->src_adr_ = address; }
+  void set_dst_address(uint32_t address) { this->dst_adr_ = address; }
+  void add_request_mod_address(uint8_t mod, uint32_t address) {
+    if (mod < MAX_REQUEST_MODS) {
+      this->request_mod_addresses_[mod] = address;
     }
   }
-  void set_request_mod_update_intervals(std::vector<uint8_t> request_mods, std::vector<uint32_t> update_intervals) {
-    for (size_t i = 0; i < request_mods.size(); i++) {
-      request_mod_update_interval_millis_map_[request_mods[i]] = update_intervals[i];
-    }
-    update_intervals_();
+  void init_request_mod_update_intervals(size_t size) { this->request_mod_update_interval_millis_map_.init(size); }
+  void add_request_mod_update_interval(uint8_t mod, uint32_t interval) {
+    this->request_mod_update_interval_millis_map_.push_back({mod, interval});
+    this->update_intervals_();
   }
   void set_update_interval(uint32_t interval_millis) {
-    update_interval_millis_ = interval_millis;
-    update_intervals_();
+    this->update_interval_millis_ = interval_millis;
+    this->update_intervals_();
   }
   void set_mcu_connected_timeout(uint32_t timeout) { this->mcu_connected_timeout_ = timeout; }
   void set_mcu_connected_binary_sensor(binary_sensor::BinarySensor *sensor) {
@@ -114,11 +125,16 @@ class Econet : public Component, public uart::UARTDevice {
   void set_float_datapoint_value(const std::string &datapoint_id, float value, uint32_t address = 0);
   void set_enum_datapoint_value(const std::string &datapoint_id, uint8_t value, uint32_t address = 0);
 
-  void register_listener(const std::string &datapoint_id, int8_t request_mod, bool request_once,
-                         const std::function<void(EconetDatapoint)> &func, bool is_raw_datapoint = false,
-                         uint32_t src_adr = 0);
+  // Returns a listener id that can later be passed to unregister_listener(). 0 is never a valid id.
+  uint32_t register_listener(const std::string &datapoint_id, int8_t request_mod, bool request_once,
+                             const std::function<void(const EconetDatapoint &)> &func, bool is_raw_datapoint = false,
+                             uint32_t src_adr = 0, bool one_shot = false, bool run_existing = true);
+  // Removes a previously registered listener. Safe to call with an id that has already
+  // fired (one-shot) or been unregistered; returns false in that case. Must not be called
+  // from within send_datapoint_()'s own iteration over listeners_ (it snapshots first).
+  bool unregister_listener(uint32_t listener_id);
 
-  void homeassistant_read(const std::string &datapoint_id, uint32_t address = 0);
+  std::map<std::string, std::string> homeassistant_read(const std::string &datapoint_id, uint32_t address = 0);
   void homeassistant_write(const std::string &datapoint_id, uint8_t value, uint32_t address = 0);
   void homeassistant_write(const std::string &datapoint_id, float value, uint32_t address = 0);
 
@@ -133,40 +149,40 @@ class Econet : public Component, public uart::UARTDevice {
   void parse_tx_message_();
   void handle_response_(const EconetDatapointID &datapoint_id, const uint8_t *p, uint8_t len);
 
-  void transmit_message_(uint8_t command, const std::vector<uint8_t> &data, uint32_t dst_adr = 0, uint32_t src_adr = 0);
+  void transmit_message_(uint8_t command, const uint8_t *data, size_t len, uint32_t dst_adr = 0, uint32_t src_adr = 0);
   void request_strings_();
   void write_value_(const std::string &object, EconetDatapointType type, float value, uint32_t address = 0);
 
   void update_intervals_() {
-    min_update_interval_millis_ = update_interval_millis_;
+    this->min_update_interval_millis_ = this->update_interval_millis_;
     for (auto i = 0; i < MAX_REQUEST_MODS; i++) {
-      request_mod_update_interval_millis_[i] = update_interval_millis_;
+      this->request_mod_update_interval_millis_[i] = this->update_interval_millis_;
     }
-    for (auto &kv : this->request_mod_update_interval_millis_map_) {
-      request_mod_update_interval_millis_[kv.first] = kv.second;
-      min_update_interval_millis_ = std::min(min_update_interval_millis_, kv.second);
+    for (auto &item : this->request_mod_update_interval_millis_map_) {
+      this->request_mod_update_interval_millis_[item.mod] = item.interval;
+      this->min_update_interval_millis_ = std::min(this->min_update_interval_millis_, item.interval);
     }
   }
 
   // Member variables - ordered for packing
   // Large/complex types
   ReadRequest read_req_{};
-  esphome::api::CustomAPIDevice capi_;
   std::vector<EconetDatapointListener> listeners_;
-  std::vector<uint32_t> request_mod_addresses_ = std::vector<uint32_t>(MAX_REQUEST_MODS, 0);
-  std::map<uint8_t, uint32_t> request_mod_update_interval_millis_map_;
-  std::vector<uint32_t> request_mod_update_interval_millis_ =
-      std::vector<uint32_t>(MAX_REQUEST_MODS, DEFAULT_UPDATE_INTERVAL_MILLIS);
-  std::vector<std::set<std::string>> request_datapoint_ids_ = std::vector<std::set<std::string>>(MAX_REQUEST_MODS);
-  std::vector<uint32_t> request_mod_last_requested_ = std::vector<uint32_t>(MAX_REQUEST_MODS, 0);
-  std::set<uint8_t> request_mods_;
-  std::set<EconetDatapointID> raw_datapoint_ids_;
-  std::set<EconetDatapointID> request_once_datapoint_ids_;
-  std::map<EconetDatapointID, EconetDatapoint> datapoints_;
-  std::map<EconetDatapointID, EconetDatapoint> pending_writes_;
-  std::queue<EconetDatapointID> datapoint_ids_for_read_service_;
-  std::vector<uint8_t> rx_message_;
-  std::vector<uint8_t> tx_message_;
+  uint32_t next_listener_id_{1};  // monotonic; 0 is reserved as invalid
+  std::array<uint32_t, MAX_REQUEST_MODS> request_mod_addresses_{};
+  FixedVector<RequestModUpdateInterval> request_mod_update_interval_millis_map_;
+  std::array<uint32_t, MAX_REQUEST_MODS>
+      request_mod_update_interval_millis_{};  // Initialized in loop/update_intervals_
+  std::array<std::vector<std::string>, MAX_REQUEST_MODS> request_datapoint_ids_;
+  std::array<uint32_t, MAX_REQUEST_MODS> request_mod_last_requested_{};
+  std::vector<uint8_t> request_mods_;
+  std::vector<EconetDatapointID> raw_datapoint_ids_;
+  std::vector<EconetDatapointID> request_once_datapoint_ids_;
+  std::vector<DatapointEntry> datapoints_;
+  std::vector<DatapointEntry> pending_writes_;
+  std::vector<EconetDatapointID> datapoint_ids_for_read_service_;
+  StaticVector<uint8_t, MAX_MESSAGE_SIZE> rx_message_;
+  StaticVector<uint8_t, MAX_MESSAGE_SIZE> tx_message_;
 
   // Pointers
   binary_sensor::BinarySensor *mcu_connected_binary_sensor_{nullptr};
@@ -187,6 +203,16 @@ class Econet : public Component, public uart::UARTDevice {
 
   // 1-byte types
   bool mcu_connected_{false};
+
+  // State for a synchronous homeassistant_read() call in progress. Using a member (rather
+  // than stack locals captured by reference in the listener lambda) means a listener that
+  // fires after the call has already timed out and returned safely becomes a no-op instead
+  // of writing through a dangling reference.
+  struct PendingRead {
+    EconetDatapoint result;
+    bool received = false;
+  };
+  std::unique_ptr<PendingRead> pending_read_;
 };
 
 class EconetClient {
@@ -197,7 +223,7 @@ class EconetClient {
   void set_src_adr(uint32_t src_adr) { this->src_adr_ = src_adr; }
 
  protected:
-  Econet *parent_{nullptr};
+  Econet *parent_;
   uint32_t src_adr_{0};
   int8_t request_mod_{0};
   bool request_once_{false};
