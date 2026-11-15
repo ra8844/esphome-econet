@@ -37,6 +37,11 @@ uart:
 packages:
   econet-tlwh: !include econet_tankless_water_heater.yaml
 
+econet:
+  # This heater answers from 0x10C0 (class-type-9 announcements show Src Adr 0x10c0).
+  # v3.8.3 no longer auto-learns dst_address when it is set; the tankless package sets 0x1040.
+  dst_address: 0x10C0
+
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
