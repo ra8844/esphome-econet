@@ -77,8 +77,11 @@ api:
         address: int
       then:
         - lambda: id(econet_id).homeassistant_write(datapoint_id, value, address);
+  encryption:
+    key: !secret econet__encryption_key
 ota:
   platform: esphome
+  password: !secret econet__ota_password
 logger:
   level: ${logger_level}
   tx_buffer_size: 1024
